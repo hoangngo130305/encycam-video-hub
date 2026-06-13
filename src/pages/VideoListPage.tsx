@@ -1,27 +1,40 @@
-import { useState } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Search, Video, Filter, Upload, Eye, ChevronRight } from 'lucide-react';
+import { Search, Video, Upload, Eye, ChevronRight } from 'lucide-react';
 import { useAppStore } from '../store/appStore';
 import TopBar from '../components/layout/TopBar';
+import { VideoFilterBar } from '../components/VideoFilterBar';
 import { StatusBadge, Avatar, Button, Card, EmptyState } from '../components/ui';
 import type { VideoStatus } from '../types';
 
-const STATUS_FILTERS: { label: string; value: string }[] = [
-  { label: 'Tất cả', value: '' },
-  { label: 'Chờ review', value: 'pending' },
-  { label: 'Đang review', value: 'reviewing' },
-  { label: 'Đã reviewed', value: 'reviewed' },
-  { label: 'Đã duyệt', value: 'approved' },
-  { label: 'Từ chối', value: 'rejected' },
-  { label: 'Cần sửa', value: 'needs_revision' },
-];
+/**
+ * Filter mapping from filter ID to video statuses
+ */
+const FILTER_STATUS_MAP: Record<string, VideoStatus[]> = {
+  all: ['pending', 'reviewing', 'reviewed', 'approved', 'rejected', 'needs_revision'],
+  pending: ['pending'],
+  approved: ['approved'],
+  needs_revision: ['needs_revision'],
+  rejected: ['rejected'],
+};
 
 export default function VideoListPage() {
   const { currentUser, videos } = useAppStore();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<string>(searchParams.get('status') ?? '');
+  const [statusFilter, setStatusFilter] = useState<string>(searchParams.get('status') ?? 'all');
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+
+  // Handle window resize for responsive filter UI
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+  
   if (!currentUser) return null;
 
   const role = currentUser.role;
@@ -31,12 +44,16 @@ export default function VideoListPage() {
   if (role === 'btv') visibleVideos = videos.filter(v => v.btv.id === currentUser.id);
   else if (role === 'reviewer') visibleVideos = videos.filter(v => ['pending', 'reviewing', 'reviewed', 'needs_revision'].includes(v.status));
 
-  // Apply filters
-  const filtered = visibleVideos.filter(v => {
-    const matchStatus = !statusFilter || v.status === statusFilter;
-    const matchSearch = !search || v.title.toLowerCase().includes(search.toLowerCase()) || v.btv.name.toLowerCase().includes(search.toLowerCase());
-    return matchStatus && matchSearch;
-  });
+  // Apply filters using memoization for performance
+  const filtered = useMemo(() => {
+    return visibleVideos.filter(v => {
+      // Get the video statuses for the selected filter
+      const allowedStatuses = FILTER_STATUS_MAP[statusFilter] || FILTER_STATUS_MAP.all;
+      const matchStatus = allowedStatuses.includes(v.status);
+      const matchSearch = !search || v.title.toLowerCase().includes(search.toLowerCase()) || v.btv.name.toLowerCase().includes(search.toLowerCase());
+      return matchStatus && matchSearch;
+    });
+  }, [visibleVideos, statusFilter, search]);
 
   const titleMap: Record<string, string> = {
     btv: 'Video của tôi',
@@ -56,25 +73,18 @@ export default function VideoListPage() {
 
       <div className="flex-1 p-4 lg:p-6 overflow-y-auto space-y-4">
         {/* Filters */}
-        <div className="flex flex-col sm:flex-row gap-3">
+        <div className="flex flex-col gap-3">
           <div className="relative flex-1 max-w-sm">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
             <input value={search} onChange={e => setSearch(e.target.value)}
               placeholder="Tìm video, BTV..."
               className="w-full pl-9 pr-3 py-2 text-sm bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg text-gray-900 dark:text-gray-100 placeholder:text-gray-400 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10" />
           </div>
-          <div className="flex gap-1.5 flex-wrap">
-            {STATUS_FILTERS.map(f => (
-              <button key={f.value} onClick={() => setStatusFilter(f.value)}
-                className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${
-                  statusFilter === f.value
-                    ? 'bg-blue-600 text-white border-blue-600'
-                    : 'bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-700 hover:border-blue-300 dark:hover:border-blue-700'
-                }`}>
-                {f.label}
-              </button>
-            ))}
-          </div>
+          <VideoFilterBar 
+            selectedFilter={statusFilter} 
+            onFilterChange={setStatusFilter}
+            isMobile={isMobile}
+          />
         </div>
 
         {/* Video table */}
