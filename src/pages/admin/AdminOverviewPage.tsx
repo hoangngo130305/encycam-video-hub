@@ -8,7 +8,8 @@ import TopBar from '../../components/layout/TopBar';
 import { StatCard, StatusBadge, Avatar, Button, Card } from '../../components/ui';
 import type { AuditEntry, VideoStatus } from '../../types';
 
-const DJANGO_ADMIN_URL = `${import.meta.env.VITE_ADMIN_BASE ?? 'http://127.0.0.1:8000'}/admin/`;
+import { ADMIN_BASE } from '../../config';
+const DJANGO_ADMIN_URL = `${ADMIN_BASE}/admin/`;
 
 function timeAgo(iso: string): string {
   if (!iso) return '';
