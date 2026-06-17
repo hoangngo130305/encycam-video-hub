@@ -24,6 +24,7 @@ export interface VideoVersion {
   number: number;
   uploadedAt: string;
   uploadedBy: string;
+  file?: string | null;
   fileSize: string;
   duration: string;
 }
@@ -73,7 +74,7 @@ export interface Notification {
   createdAt: string;
   videoId?: number;
   videoTitle?: string;
-  forRoles: Role[];
+  forRoles?: Role[];
 }
 
 export interface AuditEntry {

@@ -1,25 +1,38 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Play, MessageSquare, History, CheckCircle2, XCircle, Send,
-  RotateCcw, Upload, Clock, Video, ChevronDown, X
+  RotateCcw, Upload, Clock, Video, X
 } from 'lucide-react';
 import { useAppStore } from '../store/appStore';
+import { videoService } from '../services/videoService';
 import TopBar from '../components/layout/TopBar';
 import { StatusBadge, Avatar, Button, Card, Modal, WorkflowTimeline, Textarea, EmptyState } from '../components/ui';
 import { cn } from '../lib/utils';
+import type { Video as VideoType, Comment } from '../types';
 
 type Tab = 'video' | 'comments' | 'history';
+
+function timeAgo(iso: string): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  const diff = Date.now() - d.getTime();
+  if (diff < 60000) return 'Vừa xong';
+  if (diff < 3600000) return `${Math.floor(diff / 60000)} phút trước`;
+  if (diff < 86400000) return `${Math.floor(diff / 3600000)} giờ trước`;
+  return d.toLocaleDateString('vi-VN');
+}
 
 export default function VideoDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const {
-    currentUser, getVideoById, comments, addComment, resolveComment,
-    updateVideoStatus, bumpVideoVersion, addAudit, showToast,
-  } = useAppStore();
+  const { currentUser, updateVideoInList, showToast } = useAppStore();
 
-  const video = getVideoById(Number(id));
+  const [video, setVideo] = useState<VideoType | null>(null);
+  const [comments, setComments] = useState<Comment[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState(false);
+
   const [activeTab, setActiveTab] = useState<Tab>('video');
   const [commentText, setCommentText] = useState('');
   const [selectedVersion, setSelectedVersion] = useState<number | null>(null);
@@ -30,7 +43,36 @@ export default function VideoDetailPage() {
   const [rejectReason, setRejectReason] = useState('');
   const [revisionNote, setRevisionNote] = useState('');
 
-  if (!currentUser || !video) {
+  const videoId = Number(id);
+
+  useEffect(() => {
+    if (!videoId) return;
+    setLoading(true);
+    Promise.all([
+      videoService.get(videoId),
+      videoService.listComments(videoId),
+    ]).then(([v, c]) => {
+      setVideo(v);
+      setComments(c);
+    }).catch(() => {
+      setVideo(null);
+    }).finally(() => setLoading(false));
+  }, [videoId]);
+
+  if (!currentUser) return null;
+
+  if (loading) {
+    return (
+      <div className="flex flex-col h-full">
+        <TopBar title="Đang tải..." actions={<Button variant="ghost" size="sm" icon={<ArrowLeft size={13} />} onClick={() => navigate(-1)}>Quay lại</Button>} />
+        <div className="flex-1 flex items-center justify-center">
+          <div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+        </div>
+      </div>
+    );
+  }
+
+  if (!video) {
     return (
       <div className="flex flex-col h-full">
         <TopBar title="Video không tìm thấy" />
@@ -43,68 +85,94 @@ export default function VideoDetailPage() {
   }
 
   const role = currentUser.role;
-  const vComments = comments[video.id] ?? [];
-  const openComments = vComments.filter(c => !c.resolved).length;
+  const openComments = comments.filter(c => !c.resolved).length;
   const currentVersionNum = selectedVersion ?? video.currentVersion;
 
-  const doApprove = () => {
-    updateVideoStatus(video.id, 'approved');
-    addAudit({ timestamp: new Date().toLocaleString('vi-VN'), user: currentUser, action: `Approve "${video.title}" — Published ✅`, resourceType: 'video', resourceId: video.id });
-    showToast(`✅ Đã approve "${video.title}"`, 'success');
-    setApproveModal(false);
-    navigate('/dashboard');
+  const withAction = async (fn: () => Promise<VideoType>) => {
+    setActionLoading(true);
+    try {
+      const updated = await fn();
+      setVideo(updated);
+      updateVideoInList(updated);
+      return true;
+    } catch (err: unknown) {
+      showToast(err instanceof Error ? err.message : 'Có lỗi xảy ra', 'error');
+      return false;
+    } finally {
+      setActionLoading(false);
+    }
   };
 
-  const doReject = () => {
+  const doStartReview = async () => {
+    const ok = await withAction(() => videoService.startReview(video.id));
+    if (ok) showToast('Đã bắt đầu review', 'success');
+  };
+
+  const doApprove = async () => {
+    const ok = await withAction(() => videoService.approve(video.id));
+    if (ok) {
+      showToast(`✅ Đã approve "${video.title}"`, 'success');
+      setApproveModal(false);
+      navigate('/dashboard');
+    }
+  };
+
+  const doReject = async () => {
     if (!rejectReason.trim()) { showToast('Vui lòng nhập lý do từ chối', 'error'); return; }
-    updateVideoStatus(video.id, 'rejected');
-    addAudit({ timestamp: new Date().toLocaleString('vi-VN'), user: currentUser, action: `Reject "${video.title}" — Lý do: ${rejectReason}`, resourceType: 'video', resourceId: video.id });
-    showToast(`Video đã bị reject. Thông báo đã gửi tới BTV.`, 'error');
-    setRejectModal(false);
-    navigate('/dashboard');
+    const ok = await withAction(() => videoService.reject(video.id, rejectReason));
+    if (ok) {
+      showToast('Video đã bị reject. Thông báo đã gửi tới BTV.', 'error');
+      setRejectModal(false);
+      navigate('/dashboard');
+    }
   };
 
-  const doSendFinal = () => {
-    if (openComments > 0) { showToast(`Còn ${openComments} comment chưa resolve. Hãy xử lý hết trước khi chuyển.`, 'warning'); return; }
-    updateVideoStatus(video.id, 'reviewed');
-    addAudit({ timestamp: new Date().toLocaleString('vi-VN'), user: currentUser, action: `Approve review "${video.title}" — chuyển Duyệt cuối`, resourceType: 'video', resourceId: video.id });
-    showToast(`Đã chuyển "${video.title}" lên Duyệt cuối`, 'success');
-    setSendFinalModal(false);
-    navigate('/dashboard');
+  const doSendFinal = async () => {
+    if (openComments > 0) {
+      showToast(`Còn ${openComments} comment chưa resolve. Hãy xử lý hết trước khi chuyển.`, 'warning');
+      return;
+    }
+    const ok = await withAction(() => videoService.sendToFinal(video.id));
+    if (ok) {
+      showToast(`Đã chuyển "${video.title}" lên Duyệt cuối`, 'success');
+      setSendFinalModal(false);
+      navigate('/dashboard');
+    }
   };
 
-  const doRequestRevision = () => {
+  const doRequestRevision = async () => {
     if (!revisionNote.trim()) { showToast('Vui lòng nhập tóm tắt yêu cầu', 'error'); return; }
-    updateVideoStatus(video.id, 'needs_revision');
-    addAudit({ timestamp: new Date().toLocaleString('vi-VN'), user: currentUser, action: `Yêu cầu sửa "${video.title}" — ${revisionNote}`, resourceType: 'video', resourceId: video.id });
-    showToast(`Đã gửi yêu cầu sửa lại tới BTV`, 'warning');
-    setRevisionModal(false);
-    navigate('/dashboard');
+    const ok = await withAction(() => videoService.requestRevision(video.id, revisionNote));
+    if (ok) {
+      showToast('Đã gửi yêu cầu sửa lại tới BTV', 'warning');
+      setRevisionModal(false);
+      navigate('/dashboard');
+    }
   };
 
-  const doAddComment = () => {
+  const doAddComment = async () => {
     if (!commentText.trim()) { showToast('Vui lòng nhập nội dung comment', 'error'); return; }
     const tsMatch = commentText.match(/\b(\d{1,2}:\d{2})\b/);
-    addComment(video.id, {
-      id: Date.now(),
-      videoId: video.id,
-      user: currentUser,
-      text: commentText,
-      timestamp: tsMatch?.[1],
-      resolved: false,
-      createdAt: 'Vừa xong',
-    });
-    addAudit({ timestamp: new Date().toLocaleString('vi-VN'), user: currentUser, action: `Comment tại ${tsMatch?.[1] ?? '—'} — "${commentText.substring(0, 40)}"`, resourceType: 'video', resourceId: video.id });
-    setCommentText('');
-    showToast('Đã gửi comment', 'success');
+    try {
+      const comment = await videoService.addComment(video.id, commentText, tsMatch?.[1]);
+      setComments(prev => [...prev, comment]);
+      setCommentText('');
+      showToast('Đã gửi comment', 'success');
+    } catch (err: unknown) {
+      showToast(err instanceof Error ? err.message : 'Không thể gửi comment', 'error');
+    }
   };
 
-  const doResolve = (cId: number) => {
-    resolveComment(video.id, cId);
-    showToast('Đã đánh dấu comment là đã xử lý', 'success');
+  const doResolve = async (cId: number) => {
+    try {
+      const updated = await videoService.resolveComment(cId);
+      setComments(prev => prev.map(c => c.id === cId ? updated : c));
+      showToast('Đã đánh dấu comment là đã xử lý', 'success');
+    } catch {
+      showToast('Không thể resolve comment', 'error');
+    }
   };
 
-  // Topbar actions
   const backBtn = <Button variant="ghost" size="sm" icon={<ArrowLeft size={13} />} onClick={() => navigate(-1)}>Quay lại</Button>;
   const reuploadBtn = (role === 'btv' && (video.status === 'needs_revision' || video.status === 'rejected')) ? (
     <Button variant="primary" size="sm" icon={<Upload size={13} />} onClick={() => navigate(`/upload?reupload=${video.id}`)}>
@@ -136,29 +204,37 @@ export default function VideoDetailPage() {
             <div className={cn('space-y-4', activeTab !== 'video' && 'hidden lg:block')}>
               {/* Player */}
               <Card className="overflow-hidden">
-                <div className={`aspect-video bg-gradient-to-br ${video.thumbGradient} relative flex items-center justify-center group cursor-pointer`}
-                  onClick={() => showToast('Trình phát video sẽ được tích hợp trong bản production', 'info')}>
-                  <div className="w-16 h-16 rounded-full bg-black/30 backdrop-blur flex items-center justify-center group-hover:scale-110 transition-transform">
-                    <Play size={24} className="text-white ml-1" />
-                  </div>
-                  <div className="absolute bottom-3 left-3 right-3 flex items-center gap-2">
-                    <div className="flex-1 h-1 bg-white/20 rounded-full">
-                      <div className="w-1/3 h-full bg-white rounded-full" />
+                {(() => {
+                  const ver = video.versions?.find(v => v.number === currentVersionNum);
+                  return ver?.file ? (
+                    <video
+                      key={`${video.id}-v${currentVersionNum}`}
+                      controls
+                      className="w-full aspect-video bg-black"
+                      preload="metadata"
+                    >
+                      <source src={ver.file} type="video/mp4" />
+                    </video>
+                  ) : (
+                    <div className={`aspect-video bg-gradient-to-br ${video.thumbGradient} relative flex items-center justify-center`}>
+                      <div className="flex flex-col items-center gap-2 text-white/80">
+                        <Play size={32} className="opacity-60" />
+                        <span className="text-xs">Chưa có file video</span>
+                      </div>
                     </div>
-                    <span className="text-white text-xs font-mono bg-black/40 px-1.5 rounded">
-                      {video.versions[currentVersionNum - 1]?.duration ?? '—'}
-                    </span>
-                  </div>
-                </div>
+                  );
+                })()}
 
                 <div className="p-4">
                   <h2 className="font-bold text-base text-gray-900 dark:text-gray-100 mb-3">{video.title}</h2>
                   <div className="flex flex-wrap gap-x-4 gap-y-1.5 text-sm mb-3">
-                    <div className="flex items-center gap-1.5 text-gray-600 dark:text-gray-400 text-xs">
-                      <span className="text-gray-400">BTV:</span>
-                      <Avatar name={video.btv.name} initials={video.btv.initials} bg={video.btv.avatarBg} color={video.btv.avatarColor} size="xs" />
-                      <span className="font-medium text-gray-700 dark:text-gray-300">{video.btv.name}</span>
-                    </div>
+                    {video.btv && (
+                      <div className="flex items-center gap-1.5 text-gray-600 dark:text-gray-400 text-xs">
+                        <span className="text-gray-400">BTV:</span>
+                        <Avatar name={video.btv.name} initials={video.btv.initials} bg={video.btv.avatarBg} color={video.btv.avatarColor} size="xs" />
+                        <span className="font-medium text-gray-700 dark:text-gray-300">{video.btv.name}</span>
+                      </div>
+                    )}
                     {video.reviewer && (
                       <div className="flex items-center gap-1.5 text-gray-600 dark:text-gray-400 text-xs">
                         <span className="text-gray-400">Reviewer:</span>
@@ -174,7 +250,7 @@ export default function VideoDetailPage() {
                   {/* Version switcher */}
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-xs text-gray-400 font-semibold">Phiên bản:</span>
-                    {video.versions.map(ver => (
+                    {(video.versions ?? []).map(ver => (
                       <button key={ver.number} onClick={() => setSelectedVersion(ver.number)}
                         className={cn('font-mono text-xs px-2.5 py-1 rounded-lg border font-semibold transition-all',
                           currentVersionNum === ver.number
@@ -185,10 +261,9 @@ export default function VideoDetailPage() {
                     ))}
                   </div>
 
-                  {/* Version info */}
-                  {video.versions[currentVersionNum - 1] && (
+                  {video.versions?.[currentVersionNum - 1] && (
                     <div className="mt-2 flex gap-3 text-xs text-gray-500 dark:text-gray-500">
-                      <span>Tải lên: {video.versions[currentVersionNum - 1].uploadedAt}</span>
+                      <span>Tải lên: {timeAgo(video.versions[currentVersionNum - 1].uploadedAt)}</span>
                       <span>Kích thước: {video.versions[currentVersionNum - 1].fileSize}</span>
                     </div>
                   )}
@@ -206,29 +281,33 @@ export default function VideoDetailPage() {
                 <WorkflowTimeline status={video.status} />
               </Card>
 
-              {/* Audit history */}
+              {/* History */}
               <Card className={cn('overflow-hidden', activeTab !== 'history' && 'hidden lg:block')}>
                 <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50">
                   <History size={14} className="text-gray-400" />
                   <span className="font-bold text-sm text-gray-900 dark:text-gray-100">Lịch sử duyệt</span>
-                  <span className="ml-auto text-xs text-gray-400">{video.history.length} bước</span>
+                  <span className="ml-auto text-xs text-gray-400">{(video.history ?? []).length} bước</span>
                 </div>
                 <div>
-                  {video.history.map((entry, i) => (
+                  {(video.history ?? []).map((entry, i, arr) => (
                     <div key={entry.id}
-                      className={cn('flex items-start gap-3 px-4 py-3 text-sm', i < video.history.length - 1 && 'border-b border-gray-100 dark:border-gray-800')}>
+                      className={cn('flex items-start gap-3 px-4 py-3 text-sm', i < arr.length - 1 && 'border-b border-gray-100 dark:border-gray-800')}>
                       <div className="flex flex-col items-center flex-shrink-0 mt-0.5">
                         <div className={cn('w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0',
-                          i === video.history.length - 1 ? 'bg-blue-600 text-white' : 'bg-green-100 dark:bg-green-950/40 text-green-600 dark:text-green-400')}>
-                          {i === video.history.length - 1 ? <Clock size={10} /> : <CheckCircle2 size={10} />}
+                          i === arr.length - 1 ? 'bg-blue-600 text-white' : 'bg-green-100 dark:bg-green-950/40 text-green-600 dark:text-green-400')}>
+                          {i === arr.length - 1 ? <Clock size={10} /> : <CheckCircle2 size={10} />}
                         </div>
-                        {i < video.history.length - 1 && <div className="w-px h-4 bg-gray-200 dark:bg-gray-800 mt-1" />}
+                        {i < arr.length - 1 && <div className="w-px h-4 bg-gray-200 dark:bg-gray-800 mt-1" />}
                       </div>
                       <div className="flex-1 min-w-0 pb-1">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <Avatar name={entry.user.name} initials={entry.user.initials} bg={entry.user.avatarBg} color={entry.user.avatarColor} size="xs" />
-                          <span className="font-semibold text-xs text-blue-600 dark:text-blue-400">{entry.user.name}</span>
-                          <span className="text-xs font-mono text-gray-400 dark:text-gray-600 ml-auto">{entry.timestamp}</span>
+                          {entry.user && (
+                            <>
+                              <Avatar name={entry.user.name} initials={entry.user.initials} bg={entry.user.avatarBg} color={entry.user.avatarColor} size="xs" />
+                              <span className="font-semibold text-xs text-blue-600 dark:text-blue-400">{entry.user.name}</span>
+                            </>
+                          )}
+                          <span className="text-xs font-mono text-gray-400 dark:text-gray-600 ml-auto">{timeAgo(entry.timestamp)}</span>
                         </div>
                         <p className="text-xs text-gray-700 dark:text-gray-300 mt-1">{entry.action}</p>
                       </div>
@@ -237,14 +316,24 @@ export default function VideoDetailPage() {
                 </div>
               </Card>
 
-              {/* Action panel */}
-              {role === 'reviewer' && ['pending', 'reviewing', 'needs_revision'].includes(video.status) && (
+              {/* Action panels */}
+              {role === 'reviewer' && video.status === 'pending' && (
+                <Card className="p-4 border-l-4 border-blue-500">
+                  <h3 className="font-bold text-sm text-gray-900 dark:text-gray-100 mb-1">Bắt đầu review</h3>
+                  <p className="text-xs text-gray-500 dark:text-gray-500 mb-3">Nhận video này vào hàng chờ của bạn để bắt đầu review.</p>
+                  <Button variant="primary" loading={actionLoading} icon={<CheckCircle2 size={13} />} onClick={doStartReview}>
+                    Bắt đầu Review
+                  </Button>
+                </Card>
+              )}
+
+              {role === 'reviewer' && ['reviewing', 'needs_revision'].includes(video.status) && (
                 <Card className="p-4 border-l-4 border-violet-500">
                   <h3 className="font-bold text-sm text-gray-900 dark:text-gray-100 mb-1">Kết luận review</h3>
                   <p className="text-xs text-gray-500 dark:text-gray-500 mb-3">Chỉ approve khi đã resolve hết toàn bộ comments open.</p>
                   <div className="flex gap-2 flex-wrap">
-                    <Button variant="success" icon={<Send size={13} />} onClick={() => setSendFinalModal(true)}>Chuyển lên Duyệt cuối</Button>
-                    <Button variant="warning" icon={<RotateCcw size={13} />} onClick={() => setRevisionModal(true)}>Yêu cầu sửa lại</Button>
+                    <Button variant="success" icon={<Send size={13} />} loading={actionLoading} onClick={() => setSendFinalModal(true)}>Chuyển lên Duyệt cuối</Button>
+                    <Button variant="warning" icon={<RotateCcw size={13} />} loading={actionLoading} onClick={() => setRevisionModal(true)}>Yêu cầu sửa lại</Button>
                   </div>
                 </Card>
               )}
@@ -254,8 +343,8 @@ export default function VideoDetailPage() {
                   <h3 className="font-bold text-sm text-gray-900 dark:text-gray-100 mb-1">Quyết định của bạn</h3>
                   <p className="text-xs text-gray-500 dark:text-gray-500 mb-3">Nếu reject, sẽ gửi thông báo đến BTV và Reviewer.</p>
                   <div className="flex gap-2 flex-wrap">
-                    <Button variant="success" icon={<CheckCircle2 size={13} />} onClick={() => setApproveModal(true)}>Approve — Xuất bản</Button>
-                    <Button variant="danger" icon={<XCircle size={13} />} onClick={() => setRejectModal(true)}>Reject — Từ chối</Button>
+                    <Button variant="success" icon={<CheckCircle2 size={13} />} loading={actionLoading} onClick={() => setApproveModal(true)}>Approve — Xuất bản</Button>
+                    <Button variant="danger" icon={<XCircle size={13} />} loading={actionLoading} onClick={() => setRejectModal(true)}>Reject — Từ chối</Button>
                   </div>
                 </Card>
               )}
@@ -275,50 +364,44 @@ export default function VideoDetailPage() {
                         {openComments} open
                       </span>
                     )}
-                    <span className="text-gray-400">{vComments.filter(c => c.resolved).length} resolved</span>
+                    <span className="text-gray-400">{comments.filter(c => c.resolved).length} resolved</span>
                   </div>
                 </div>
 
-                {/* Comment list */}
                 <div className="flex-1 overflow-y-auto p-3 space-y-2.5">
-                  {vComments.length === 0 ? (
+                  {comments.length === 0 ? (
                     <EmptyState icon={<MessageSquare size={20} />} title="Chưa có comment nào" description="Comment đầu tiên để bắt đầu review" />
-                  ) : (
-                    vComments.map(c => (
-                      <div key={c.id} className={cn('rounded-xl border p-3 transition-all',
-                        c.resolved
-                          ? 'bg-gray-50 dark:bg-gray-800/30 border-gray-100 dark:border-gray-800 opacity-60'
-                          : 'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 shadow-sm')}>
-                        <div className="flex items-center gap-2 mb-2">
-                          <Avatar name={c.user.name} initials={c.user.initials} bg={c.user.avatarBg} color={c.user.avatarColor} size="xs" />
-                          <span className="text-xs font-bold text-gray-900 dark:text-gray-100">{c.user.name}</span>
-                          {c.timestamp && (
-                            <span className="font-mono text-[10px] font-bold bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-400 px-2 py-0.5 rounded-md border border-blue-100 dark:border-blue-900">
-                              {c.timestamp}
-                            </span>
-                          )}
-                          {c.resolved && (
-                            <span className="ml-auto flex items-center gap-1 text-[10px] font-bold text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-950/40 px-2 py-0.5 rounded-full">
-                              <CheckCircle2 size={9} /> Đã xử lý
-                            </span>
-                          )}
-                          <span className="ml-auto text-[10px] text-gray-400 dark:text-gray-600">{c.createdAt}</span>
-                        </div>
-                        <p className="text-xs text-gray-700 dark:text-gray-300 leading-relaxed">
-                          {c.text.replace(/@(\S+)/g, (_, m) => `@${m}`)}
-                        </p>
-                        {!c.resolved && (role === 'reviewer' || role === 'final') && (
-                          <button onClick={() => doResolve(c.id)}
-                            className="mt-2 flex items-center gap-1 text-[10px] font-semibold text-gray-500 hover:text-green-600 dark:hover:text-green-400 transition-colors">
-                            <CheckCircle2 size={10} /> Đánh dấu đã xử lý
-                          </button>
+                  ) : comments.map(c => (
+                    <div key={c.id} className={cn('rounded-xl border p-3 transition-all',
+                      c.resolved
+                        ? 'bg-gray-50 dark:bg-gray-800/30 border-gray-100 dark:border-gray-800 opacity-60'
+                        : 'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 shadow-sm')}>
+                      <div className="flex items-center gap-2 mb-2">
+                        <Avatar name={c.user.name} initials={c.user.initials} bg={c.user.avatarBg} color={c.user.avatarColor} size="xs" />
+                        <span className="text-xs font-bold text-gray-900 dark:text-gray-100">{c.user.name}</span>
+                        {c.timestamp && (
+                          <span className="font-mono text-[10px] font-bold bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-400 px-2 py-0.5 rounded-md border border-blue-100 dark:border-blue-900">
+                            {c.timestamp}
+                          </span>
                         )}
+                        {c.resolved && (
+                          <span className="ml-auto flex items-center gap-1 text-[10px] font-bold text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-950/40 px-2 py-0.5 rounded-full">
+                            <CheckCircle2 size={9} /> Đã xử lý
+                          </span>
+                        )}
+                        <span className="ml-auto text-[10px] text-gray-400 dark:text-gray-600">{timeAgo(c.createdAt)}</span>
                       </div>
-                    ))
-                  )}
+                      <p className="text-xs text-gray-700 dark:text-gray-300 leading-relaxed">{c.text}</p>
+                      {!c.resolved && (role === 'reviewer' || role === 'final') && (
+                        <button onClick={() => doResolve(c.id)}
+                          className="mt-2 flex items-center gap-1 text-[10px] font-semibold text-gray-500 hover:text-green-600 dark:hover:text-green-400 transition-colors">
+                          <CheckCircle2 size={10} /> Đánh dấu đã xử lý
+                        </button>
+                      )}
+                    </div>
+                  ))}
                 </div>
 
-                {/* Comment input */}
                 {role !== 'btv' ? (
                   <div className="p-3 border-t border-gray-100 dark:border-gray-800 flex-shrink-0">
                     <Textarea value={commentText} onChange={e => setCommentText(e.target.value)}
@@ -333,7 +416,7 @@ export default function VideoDetailPage() {
                   </div>
                 ) : (
                   <div className="p-3 border-t border-gray-100 dark:border-gray-800 text-center text-xs text-gray-400 dark:text-gray-600 bg-gray-50 dark:bg-gray-800/30 flex-shrink-0">
-                    <span>Bạn chỉ có thể xem comments của Reviewer. Re-upload để phản hồi.</span>
+                    Bạn chỉ có thể xem comments của Reviewer. Re-upload để phản hồi.
                   </div>
                 )}
               </Card>
@@ -347,7 +430,7 @@ export default function VideoDetailPage() {
         title="✅ Xác nhận Approve" size="sm" titleColor="text-green-600 dark:text-green-400"
         footer={<>
           <Button variant="secondary" size="sm" onClick={() => setApproveModal(false)}>Huỷ</Button>
-          <Button variant="success" size="sm" icon={<CheckCircle2 size={13} />} onClick={doApprove}>Xác nhận Approve</Button>
+          <Button variant="success" size="sm" loading={actionLoading} icon={<CheckCircle2 size={13} />} onClick={doApprove}>Xác nhận Approve</Button>
         </>}>
         <p className="text-sm text-gray-700 dark:text-gray-300">
           Bạn xác nhận <strong>approve</strong> video <strong>"{video.title}"</strong>?<br /><br />
@@ -359,7 +442,7 @@ export default function VideoDetailPage() {
         title="❌ Từ chối video" titleColor="text-red-600 dark:text-red-400"
         footer={<>
           <Button variant="secondary" size="sm" onClick={() => setRejectModal(false)}>Huỷ</Button>
-          <Button variant="danger" size="sm" icon={<XCircle size={13} />} onClick={doReject}>Xác nhận Reject</Button>
+          <Button variant="danger" size="sm" loading={actionLoading} icon={<XCircle size={13} />} onClick={doReject}>Xác nhận Reject</Button>
         </>}>
         <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">Video: <strong className="text-gray-900 dark:text-gray-100">"{video.title}"</strong></p>
         <Textarea label="Lý do từ chối *" value={rejectReason} onChange={e => setRejectReason(e.target.value)}
@@ -370,7 +453,7 @@ export default function VideoDetailPage() {
         title="📤 Chuyển lên Duyệt cuối" size="sm" titleColor="text-violet-600 dark:text-violet-400"
         footer={<>
           <Button variant="secondary" size="sm" onClick={() => setSendFinalModal(false)}>Huỷ</Button>
-          <Button variant="primary" size="sm" icon={<Send size={13} />} onClick={doSendFinal}>Chuyển lên Duyệt cuối</Button>
+          <Button variant="primary" size="sm" loading={actionLoading} icon={<Send size={13} />} onClick={doSendFinal}>Chuyển lên Duyệt cuối</Button>
         </>}>
         <p className="text-sm text-gray-700 dark:text-gray-300">
           Bạn xác nhận đã review xong video <strong>"{video.title}"</strong> và chuyển lên Duyệt cuối?<br /><br />
@@ -383,7 +466,7 @@ export default function VideoDetailPage() {
         title="🔄 Yêu cầu sửa lại" titleColor="text-orange-600 dark:text-orange-400"
         footer={<>
           <Button variant="secondary" size="sm" onClick={() => setRevisionModal(false)}>Huỷ</Button>
-          <Button variant="warning" size="sm" icon={<RotateCcw size={13} />} onClick={doRequestRevision}>Gửi yêu cầu sửa</Button>
+          <Button variant="warning" size="sm" loading={actionLoading} icon={<RotateCcw size={13} />} onClick={doRequestRevision}>Gửi yêu cầu sửa</Button>
         </>}>
         <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">Video: <strong className="text-gray-900 dark:text-gray-100">"{video.title}"</strong></p>
         <Textarea label="Tóm tắt yêu cầu sửa *" value={revisionNote} onChange={e => setRevisionNote(e.target.value)}

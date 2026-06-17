@@ -1,19 +1,24 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, CloudUpload, FileVideo, X, CheckCircle2, AlertCircle, Upload } from 'lucide-react';
 import { useAppStore } from '../store/appStore';
+import { videoService } from '../services/videoService';
 import TopBar from '../components/layout/TopBar';
 import { Button, Input, Textarea, Card } from '../components/ui';
 import { cn } from '../lib/utils';
+import type { Video } from '../types';
 
 type UploadState = 'idle' | 'selected' | 'uploading' | 'success' | 'error';
 
 export default function UploadPage() {
-  const { currentUser, videos, bumpVideoVersion, addVideo, addAudit, showToast } = useAppStore();
+  const { currentUser, videos, showToast } = useAppStore();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const reuploadId = searchParams.get('reupload');
-  const reuploadVideo = reuploadId ? videos.find(v => v.id === Number(reuploadId)) : null;
+  const reuploadNum = reuploadId ? Number(reuploadId) : null;
+  const [reuploadVideo, setReuploadVideo] = useState<Video | undefined>(
+    reuploadNum ? videos.find(v => v.id === reuploadNum) : undefined
+  );
 
   const [file, setFile] = useState<File | null>(null);
   const [title, setTitle] = useState(reuploadVideo?.title ?? '');
@@ -23,6 +28,27 @@ export default function UploadPage() {
   const [progress, setProgress] = useState(0);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // Fetch the target video from the API when the Zustand store is empty.
+  // BTV can navigate here from VideoDetailPage (bypassing VideoListPage), so
+  // the store may not yet contain the video they want to re-upload.
+  useEffect(() => {
+    if (!reuploadNum || reuploadVideo) return;
+    const fromStore = videos.find(v => v.id === reuploadNum);
+    if (fromStore) {
+      setReuploadVideo(fromStore);
+      setTitle(prev => prev || fromStore.title);
+      return;
+    }
+    let cancelled = false;
+    videoService.get(reuploadNum).then(v => {
+      if (!cancelled) {
+        setReuploadVideo(v);
+        setTitle(prev => prev || v.title);
+      }
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [reuploadNum, videos, reuploadVideo]);
 
   const handleFile = useCallback((f: File) => {
     if (!f.name.toLowerCase().endsWith('.mp4')) {
@@ -53,72 +79,43 @@ export default function UploadPage() {
   };
 
   const doUpload = async () => {
-    if (!validate() || !currentUser) return;
+    if (!validate() || !currentUser || !file) return;
     setUploadState('uploading');
     setProgress(0);
 
-    // Simulate upload progress
+    // Animate progress during upload
     const interval = setInterval(() => {
       setProgress(p => {
-        if (p >= 95) { clearInterval(interval); return 95; }
-        return p + Math.random() * 12 + 3;
+        if (p >= 90) { clearInterval(interval); return 90; }
+        return p + Math.random() * 8 + 2;
       });
-    }, 200);
+    }, 300);
 
-    await new Promise(r => setTimeout(r, 2800));
-    clearInterval(interval);
-    setProgress(100);
-
-    if (reuploadVideo) {
-      bumpVideoVersion(reuploadVideo.id);
-      addAudit({
-        timestamp: new Date().toLocaleString('vi-VN'),
-        user: currentUser,
-        action: `Upload "${reuploadVideo.title}" → v${reuploadVideo.currentVersion + 1}`,
-        resourceType: 'video',
-        resourceId: reuploadVideo.id,
-      });
+    const formData = new FormData();
+    formData.append('file', file);
+    if (!reuploadVideo) {
+      formData.append('title', title.trim());
+      if (notes.trim()) formData.append('notes', notes.trim());
     } else {
-      const newId = Date.now();
-      addVideo({
-        id: newId,
-        title: title.trim(),
-        fileId: `VideoID_${Math.floor(Math.random() * 9000 + 1000)}`,
-        status: 'pending',
-        currentVersion: 1,
-        versions: [{
-          number: 1,
-          uploadedAt: new Date().toLocaleString('vi-VN'),
-          uploadedBy: currentUser.name,
-          fileSize: `${(file!.size / 1024 / 1024 / 1024).toFixed(2)} GB`,
-          duration: '—',
-        }],
-        btv: currentUser,
-        reviewer: undefined,
-        uploadedAt: new Date().toLocaleString('vi-VN'),
-        updatedAt: 'Vừa xong',
-        notes: notes.trim(),
-        thumbGradient: 'from-blue-500 to-indigo-600',
-        category: 'Tutorial',
-        history: [{
-          id: 1,
-          timestamp: new Date().toLocaleString('vi-VN'),
-          user: currentUser,
-          action: 'Upload v1',
-          toStatus: 'pending',
-        }],
-      });
-      addAudit({
-        timestamp: new Date().toLocaleString('vi-VN'),
-        user: currentUser,
-        action: `Upload mới "${title.trim()}" → v1`,
-        resourceType: 'video',
-      });
+      if (notes.trim()) formData.append('notes', notes.trim());
     }
 
-    setUploadState('success');
-    showToast('Upload thành công!', 'success');
-    setTimeout(() => navigate('/videos'), 1500);
+    try {
+      if (reuploadVideo) {
+        await videoService.reupload(reuploadVideo.id, formData);
+      } else {
+        await videoService.create(formData);
+      }
+      clearInterval(interval);
+      setProgress(100);
+      setUploadState('success');
+      showToast(reuploadVideo ? `Re-upload thành công! v${reuploadVideo.currentVersion + 1} đã được tạo.` : 'Upload thành công! Video đang chờ review.', 'success');
+      setTimeout(() => navigate('/videos'), 1500);
+    } catch (err: unknown) {
+      clearInterval(interval);
+      setUploadState('error');
+      showToast(err instanceof Error ? err.message : 'Upload thất bại. Vui lòng thử lại.', 'error');
+    }
   };
 
   const reset = () => {
@@ -249,10 +246,10 @@ export default function UploadPage() {
 
               <div className="flex gap-3 pt-1">
                 <Button variant="primary" icon={<Upload size={14} />} onClick={doUpload}
-                  loading={false} disabled={!file}>
+                  disabled={!file}>
                   {reuploadVideo ? `Re-upload v${reuploadVideo.currentVersion + 1}` : 'Upload video'}
                 </Button>
-                <Button variant="ghost" onClick={reset}>Huỷ</Button>
+                <Button variant="ghost" onClick={() => navigate(-1)}>Huỷ</Button>
               </div>
             </Card>
           )}

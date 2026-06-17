@@ -1,12 +1,15 @@
 import { create } from 'zustand';
 import type { User, Video, Comment, Notification, AuditEntry, Toast, ToastType } from '../types';
-import { USERS, VIDEOS, COMMENTS, NOTIFICATIONS, AUDIT_LOG } from '../data/mockData';
+import { clearTokens } from '../services/api';
+import { authService } from '../services/authService';
 
 interface AppState {
   // Auth
   currentUser: User | null;
+  authLoading: boolean;
   login: (user: User) => void;
   logout: () => void;
+  initAuth: () => Promise<void>;
 
   // Theme
   darkMode: boolean;
@@ -18,33 +21,34 @@ interface AppState {
   toggleSidebar: () => void;
   setSidebarOpen: (open: boolean) => void;
 
-  // Videos
+  // Videos (list cache)
   videos: Video[];
+  setVideos: (videos: Video[]) => void;
+  updateVideoInList: (video: Video) => void;
   getVideoById: (id: number) => Video | undefined;
-  updateVideoStatus: (id: number, status: Video['status']) => void;
-  addVideo: (video: Video) => void;
-  bumpVideoVersion: (id: number) => void;
 
-  // Comments
+  // Comments (per-video cache)
   comments: Record<number, Comment[]>;
+  setComments: (videoId: number, comments: Comment[]) => void;
   addComment: (videoId: number, comment: Comment) => void;
-  resolveComment: (videoId: number, commentId: number) => void;
+  updateComment: (videoId: number, comment: Comment) => void;
 
-  // Notifications
+  // Notifications (for current user, keyed by role for Sidebar badge compatibility)
   notifications: Record<string, Notification[]>;
+  setNotifications: (role: string, notifs: Notification[]) => void;
   markAllRead: (role: string) => void;
   markOneRead: (role: string, id: number) => void;
   unreadCount: (role: string) => number;
 
-  // Users (admin)
+  // Users (admin cache)
   users: User[];
-  addUser: (user: User) => void;
-  updateUser: (id: number, updates: Partial<User>) => void;
-  toggleLock: (id: number) => void;
+  setUsers: (users: User[]) => void;
+  updateUserInList: (user: User) => void;
+  removeUserFromList: (id: number) => void;
 
-  // Audit log
+  // Audit (admin cache)
   auditLog: AuditEntry[];
-  addAudit: (entry: Omit<AuditEntry, 'id'>) => void;
+  setAuditLog: (entries: AuditEntry[]) => void;
 
   // Toasts
   toasts: Toast[];
@@ -53,10 +57,41 @@ interface AppState {
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
+  // Auth
   currentUser: null,
-  login: (user) => set({ currentUser: user }),
-  logout: () => set({ currentUser: null }),
+  authLoading: true,
 
+  login: (user) => set({ currentUser: user }),
+
+  logout: () => {
+    authService.logout().catch(() => {});
+    clearTokens();
+    set({
+      currentUser: null,
+      notifications: {},
+      videos: [],
+      comments: {},
+      users: [],
+      auditLog: [],
+    });
+  },
+
+  initAuth: async () => {
+    const token = localStorage.getItem('accessToken');
+    if (!token) {
+      set({ authLoading: false });
+      return;
+    }
+    try {
+      const user = await authService.me();
+      set({ currentUser: user, authLoading: false });
+    } catch {
+      clearTokens();
+      set({ currentUser: null, authLoading: false });
+    }
+  },
+
+  // Theme
   darkMode: false,
   toggleDarkMode: () => {
     const next = !get().darkMode;
@@ -64,82 +99,90 @@ export const useAppStore = create<AppState>((set, get) => ({
     document.documentElement.classList.toggle('dark', next);
   },
 
+  // Sidebar
   sidebarCollapsed: false,
   sidebarOpen: false,
   toggleSidebar: () => set(s => ({ sidebarCollapsed: !s.sidebarCollapsed })),
   setSidebarOpen: (open) => set({ sidebarOpen: open }),
 
-  videos: VIDEOS,
+  // Videos
+  videos: [],
+  setVideos: (videos) => set({ videos }),
+  updateVideoInList: (video) =>
+    set(s => ({
+      videos: s.videos.map(v => v.id === video.id ? video : v),
+    })),
   getVideoById: (id) => get().videos.find(v => v.id === id),
-  updateVideoStatus: (id, status) => set(s => ({
-    videos: s.videos.map(v => v.id === id ? { ...v, status, updatedAt: 'Vừa xong' } : v),
-  })),
-  addVideo: (video) => set(s => ({ videos: [video, ...s.videos] })),
-  bumpVideoVersion: (id) => set(s => ({
-    videos: s.videos.map(v => {
-      if (v.id !== id) return v;
-      const newVer = v.currentVersion + 1;
-      return {
-        ...v,
-        currentVersion: newVer,
-        status: 'reviewing' as const,
-        updatedAt: 'Vừa xong',
-        versions: [...v.versions, {
-          number: newVer,
-          uploadedAt: new Date().toLocaleString('vi-VN'),
-          uploadedBy: s.currentUser?.name ?? '',
-          fileSize: '—',
-          duration: '—',
-        }],
-      };
-    }),
-  })),
 
-  comments: COMMENTS,
-  addComment: (videoId, comment) => set(s => ({
-    comments: {
-      ...s.comments,
-      [videoId]: [...(s.comments[videoId] ?? []), comment],
-    },
-  })),
-  resolveComment: (videoId, commentId) => set(s => ({
-    comments: {
-      ...s.comments,
-      [videoId]: (s.comments[videoId] ?? []).map(c =>
-        c.id === commentId ? { ...c, resolved: true } : c,
-      ),
-    },
-  })),
+  // Legacy aliases used by some pages (no-ops now, data comes from API)
+  addVideo: (video: Video) => set(s => ({ videos: [video, ...s.videos] })),
+  updateVideoStatus: (id: number, status: Video['status']) =>
+    set(s => ({ videos: s.videos.map(v => v.id === id ? { ...v, status } : v) })),
+  bumpVideoVersion: (id: number) =>
+    set(s => ({ videos: s.videos.map(v => v.id === id ? { ...v, currentVersion: v.currentVersion + 1 } : v) })),
 
-  notifications: NOTIFICATIONS,
-  markAllRead: (role) => set(s => ({
-    notifications: {
-      ...s.notifications,
-      [role]: (s.notifications[role] ?? []).map(n => ({ ...n, read: true })),
-    },
-  })),
-  markOneRead: (role, id) => set(s => ({
-    notifications: {
-      ...s.notifications,
-      [role]: (s.notifications[role] ?? []).map(n => n.id === id ? { ...n, read: true } : n),
-    },
-  })),
+  // Comments
+  comments: {},
+  setComments: (videoId, comments) =>
+    set(s => ({ comments: { ...s.comments, [videoId]: comments } })),
+  addComment: (videoId, comment) =>
+    set(s => ({ comments: { ...s.comments, [videoId]: [...(s.comments[videoId] ?? []), comment] } })),
+  updateComment: (videoId, comment) =>
+    set(s => ({
+      comments: {
+        ...s.comments,
+        [videoId]: (s.comments[videoId] ?? []).map(c => c.id === comment.id ? comment : c),
+      },
+    })),
+  resolveComment: (videoId: number, commentId: number) =>
+    set(s => ({
+      comments: {
+        ...s.comments,
+        [videoId]: (s.comments[videoId] ?? []).map(c => c.id === commentId ? { ...c, resolved: true } : c),
+      },
+    })),
+
+  // Notifications
+  notifications: {},
+  setNotifications: (role, notifs) =>
+    set(s => ({ notifications: { ...s.notifications, [role]: notifs } })),
+  markAllRead: (role) =>
+    set(s => ({
+      notifications: {
+        ...s.notifications,
+        [role]: (s.notifications[role] ?? []).map(n => ({ ...n, read: true })),
+      },
+    })),
+  markOneRead: (role, id) =>
+    set(s => ({
+      notifications: {
+        ...s.notifications,
+        [role]: (s.notifications[role] ?? []).map(n => n.id === id ? { ...n, read: true } : n),
+      },
+    })),
   unreadCount: (role) => (get().notifications[role] ?? []).filter(n => !n.read).length,
 
-  users: USERS,
-  addUser: (user) => set(s => ({ users: [...s.users, user] })),
-  updateUser: (id, updates) => set(s => ({
-    users: s.users.map(u => u.id === id ? { ...u, ...updates } : u),
-  })),
-  toggleLock: (id) => set(s => ({
-    users: s.users.map(u => u.id === id ? { ...u, locked: !u.locked } : u),
-  })),
+  // Users
+  users: [],
+  setUsers: (users) => set({ users }),
+  updateUserInList: (user) =>
+    set(s => ({ users: s.users.map(u => u.id === user.id ? user : u) })),
+  removeUserFromList: (id) =>
+    set(s => ({ users: s.users.filter(u => u.id !== id) })),
 
-  auditLog: AUDIT_LOG,
-  addAudit: (entry) => set(s => ({
-    auditLog: [{ ...entry, id: Date.now() }, ...s.auditLog],
-  })),
+  // Legacy aliases
+  addUser: (user: User) => set(s => ({ users: [...s.users, user] })),
+  updateUser: (id: number, updates: Partial<User>) =>
+    set(s => ({ users: s.users.map(u => u.id === id ? { ...u, ...updates } : u) })),
+  toggleLock: (id: number) =>
+    set(s => ({ users: s.users.map(u => u.id === id ? { ...u, locked: !u.locked } : u) })),
 
+  // Audit
+  auditLog: [],
+  setAuditLog: (entries) => set({ auditLog: entries }),
+  addAudit: () => {}, // no-op, audit is server-side now
+
+  // Toasts
   toasts: [],
   showToast: (message, type = 'info') => {
     const id = crypto.randomUUID();

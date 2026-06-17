@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useAppStore } from './store/appStore';
 import AppShell from './components/layout/AppShell';
@@ -39,7 +40,29 @@ function ProtectedRoutes() {
 }
 
 export default function App() {
-  const { currentUser } = useAppStore();
+  const { currentUser, authLoading, initAuth, logout } = useAppStore();
+
+  useEffect(() => {
+    initAuth();
+  }, [initAuth]);
+
+  // Listen for token expiry event fired by api.ts
+  useEffect(() => {
+    const handler = () => logout();
+    window.addEventListener('auth:expired', handler);
+    return () => window.removeEventListener('auth:expired', handler);
+  }, [logout]);
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-950">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+          <span className="text-sm text-gray-500">Đang tải...</span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <HashRouter>
