@@ -56,6 +56,9 @@ interface AppState {
   dismissToast: (id: string) => void;
 }
 
+const _initDark = localStorage.getItem('darkMode') === 'true';
+if (_initDark) document.documentElement.classList.add('dark');
+
 export const useAppStore = create<AppState>((set, get) => ({
   // Auth
   currentUser: null,
@@ -92,11 +95,12 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   // Theme
-  darkMode: false,
+  darkMode: _initDark,
   toggleDarkMode: () => {
     const next = !get().darkMode;
     set({ darkMode: next });
     document.documentElement.classList.toggle('dark', next);
+    localStorage.setItem('darkMode', String(next));
   },
 
   // Sidebar
@@ -185,7 +189,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   // Toasts
   toasts: [],
   showToast: (message, type = 'info') => {
-    const id = crypto.randomUUID();
+    const id = crypto.randomUUID?.() ?? Math.random().toString(36).slice(2);
     set(s => ({ toasts: [...s.toasts, { id, type, message }] }));
     setTimeout(() => get().dismissToast(id), 3500);
   },

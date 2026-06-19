@@ -372,32 +372,41 @@ export default function VideoDetailPage() {
                   {comments.length === 0 ? (
                     <EmptyState icon={<MessageSquare size={20} />} title="Chưa có comment nào" description="Comment đầu tiên để bắt đầu review" />
                   ) : comments.map(c => (
-                    <div key={c.id} className={cn('rounded-xl border p-3 transition-all',
+                    <div key={c.id} className={cn('rounded-xl border transition-all',
                       c.resolved
                         ? 'bg-gray-50 dark:bg-gray-800/30 border-gray-100 dark:border-gray-800 opacity-60'
                         : 'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 shadow-sm')}>
-                      <div className="flex items-center gap-2 mb-2">
-                        <Avatar name={c.user.name} initials={c.user.initials} bg={c.user.avatarBg} color={c.user.avatarColor} size="xs" />
-                        <span className="text-xs font-bold text-gray-900 dark:text-gray-100">{c.user.name}</span>
-                        {c.timestamp && (
-                          <span className="font-mono text-[10px] font-bold bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-400 px-2 py-0.5 rounded-md border border-blue-100 dark:border-blue-900">
-                            {c.timestamp}
-                          </span>
-                        )}
-                        {c.resolved && (
-                          <span className="ml-auto flex items-center gap-1 text-[10px] font-bold text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-950/40 px-2 py-0.5 rounded-full">
-                            <CheckCircle2 size={9} /> Đã xử lý
-                          </span>
-                        )}
-                        <span className="ml-auto text-[10px] text-gray-400 dark:text-gray-600">{timeAgo(c.createdAt)}</span>
+                      <div className="p-3">
+                        <div className="flex items-center gap-2 mb-2">
+                          <Avatar name={c.user.name} initials={c.user.initials} bg={c.user.avatarBg} color={c.user.avatarColor} size="xs" />
+                          <span className="text-xs font-bold text-gray-900 dark:text-gray-100">{c.user.name}</span>
+                          {c.timestamp && (
+                            <span className="font-mono text-[10px] font-bold bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-400 px-2 py-0.5 rounded-md border border-blue-100 dark:border-blue-900">
+                              {c.timestamp}
+                            </span>
+                          )}
+                          <span className="ml-auto text-[10px] text-gray-400 dark:text-gray-600 flex-shrink-0">{timeAgo(c.createdAt)}</span>
+                        </div>
+                        <p className="text-xs text-gray-700 dark:text-gray-300 leading-relaxed">{c.text}</p>
                       </div>
-                      <p className="text-xs text-gray-700 dark:text-gray-300 leading-relaxed">{c.text}</p>
-                      {!c.resolved && (role === 'reviewer' || role === 'final') && (
-                        <button onClick={() => doResolve(c.id)}
-                          className="mt-2 flex items-center gap-1 text-[10px] font-semibold text-gray-500 hover:text-green-600 dark:hover:text-green-400 transition-colors">
-                          <CheckCircle2 size={10} /> Đánh dấu đã xử lý
+
+                      {/* Resolve bar */}
+                      {c.resolved ? (
+                        <div className="px-3 py-2 border-t border-green-100 dark:border-green-900/40 bg-green-50/60 dark:bg-green-950/20 rounded-b-xl flex items-center gap-2">
+                          <CheckCircle2 size={13} className="text-green-600 dark:text-green-400 flex-shrink-0" />
+                          <span className="text-xs font-semibold text-green-700 dark:text-green-400">Đã xử lý</span>
+                        </div>
+                      ) : (role === 'reviewer' || role === 'final') ? (
+                        <button
+                          onClick={() => doResolve(c.id)}
+                          className="w-full px-3 py-2 border-t border-orange-100 dark:border-orange-900/40 bg-orange-50/60 dark:bg-orange-950/20 rounded-b-xl flex items-center gap-2 hover:bg-green-50 dark:hover:bg-green-950/30 hover:border-green-200 dark:hover:border-green-800 group transition-all"
+                        >
+                          <CheckCircle2 size={14} className="text-orange-400 dark:text-orange-500 group-hover:text-green-600 dark:group-hover:text-green-400 flex-shrink-0 transition-colors" />
+                          <span className="text-xs font-semibold text-orange-600 dark:text-orange-400 group-hover:text-green-700 dark:group-hover:text-green-300 transition-colors">
+                            Chưa xử lý — Nhấn để đánh dấu đã xử lý
+                          </span>
                         </button>
-                      )}
+                      ) : null}
                     </div>
                   ))}
                 </div>
