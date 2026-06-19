@@ -1,22 +1,19 @@
-import re
+from typing import Optional
 from django.contrib.auth import authenticate
 from django.db.models import Q
-from ninja import Router
+from fastapi import APIRouter, HTTPException, Depends
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from typing import Optional
 from accounts.models import User, ROLE_AVATAR_COLORS
 from accounts.schemas import (
     UserOut, LoginIn, LoginOut, LogoutIn,
-    TokenRefreshIn, TokenRefreshOut,
-    MeUpdateIn, UserCreateIn, UserUpdateIn,
+    TokenRefreshIn, MeUpdateIn, UserCreateIn, UserUpdateIn,
 )
 from audit.models import AuditEntry
+from fastapi_auth import require_auth
 
-router = Router(tags=["auth & users"])
+router = APIRouter(tags=["auth & users"])
 
-
-# ── helpers ───────────────────────────────────────────────────────────────────
 
 def _initials(name: str) -> str:
     words = name.strip().split()
@@ -29,34 +26,29 @@ def _audit(actor: User, action: str, resource_id: int) -> None:
     )
 
 
-def _user_out(user: User) -> dict:
-    return UserOut.model_validate(user).model_dump(by_alias=True)
+def _check_admin(user: User) -> None:
+    if user.role != 'admin':
+        raise HTTPException(status_code=403, detail="Chỉ Admin mới có quyền này.")
 
 
-# ── auth ──────────────────────────────────────────────────────────────────────
-
-@router.post("/auth/login/", auth=None, response=LoginOut)
-def login(request, body: LoginIn):
+@router.post("/auth/login/", response_model=LoginOut)
+def login(body: LoginIn):
     email = body.email.strip().lower()
-    user = authenticate(request, email=email, password=body.password)
-
+    user = authenticate(email=email, password=body.password)
     if user is None:
-        from ninja.errors import HttpError
-        raise HttpError(401, "Email hoặc mật khẩu không đúng.")
+        raise HTTPException(status_code=401, detail="Email hoặc mật khẩu không đúng.")
     if user.locked:
-        from ninja.errors import HttpError
-        raise HttpError(403, "Tài khoản đã bị khoá. Vui lòng liên hệ Admin.")
-
+        raise HTTPException(status_code=403, detail="Tài khoản đã bị khoá. Vui lòng liên hệ Admin.")
     refresh = RefreshToken.for_user(user)
-    return {
-        "accessToken": str(refresh.access_token),
-        "refreshToken": str(refresh),
-        "user": _user_out(user),
-    }
+    return LoginOut(
+        accessToken=str(refresh.access_token),
+        refreshToken=str(refresh),
+        user=UserOut.model_validate(user),
+    )
 
 
 @router.post("/auth/logout/")
-def logout(request, body: LogoutIn):
+def logout(body: LogoutIn, user: User = Depends(require_auth)):
     try:
         token = RefreshToken(body.refreshToken)
         token.blacklist()
@@ -65,52 +57,43 @@ def logout(request, body: LogoutIn):
     return {"detail": "Đã đăng xuất thành công."}
 
 
-@router.get("/auth/me/", response=UserOut)
-def me(request):
-    return request.auth
+@router.get("/auth/me/", response_model=UserOut)
+def me(user: User = Depends(require_auth)):
+    return user
 
 
-@router.patch("/auth/me/", response=UserOut)
-def update_me(request, body: MeUpdateIn):
-    user: User = request.auth
+@router.patch("/auth/me/", response_model=UserOut)
+def update_me(body: MeUpdateIn, user: User = Depends(require_auth)):
     if body.name is not None:
         user.name = body.name
         user.initials = _initials(body.name)
     if body.email is not None:
         email = body.email.strip().lower()
         if User.objects.filter(email__iexact=email).exclude(pk=user.pk).exists():
-            from ninja.errors import HttpError
-            raise HttpError(400, "Email đã tồn tại trong hệ thống.")
+            raise HTTPException(status_code=400, detail="Email đã tồn tại trong hệ thống.")
         user.email = email
     user.save()
     return user
 
 
-@router.post("/auth/token/refresh/", auth=None)
-def token_refresh(request, body: TokenRefreshIn):
-    from ninja.errors import HttpError
+@router.post("/auth/token/refresh/")
+def token_refresh(body: TokenRefreshIn):
     try:
         old = RefreshToken(body.refresh)
         old.blacklist()
-        new_refresh = RefreshToken.for_user(
-            User.objects.get(id=old['user_id'])
-        )
+        new_refresh = RefreshToken.for_user(User.objects.get(id=old['user_id']))
         return {"access": str(new_refresh.access_token), "refresh": str(new_refresh)}
     except Exception:
-        raise HttpError(401, "Refresh token không hợp lệ hoặc đã hết hạn.")
+        raise HTTPException(status_code=401, detail="Refresh token không hợp lệ hoặc đã hết hạn.")
 
 
-# ── user management (admin only) ──────────────────────────────────────────────
-
-def _check_admin(user: User) -> None:
-    if user.role != 'admin':
-        from ninja.errors import HttpError
-        raise HttpError(403, "Chỉ Admin mới có quyền này.")
-
-
-@router.get("/users/", response=list[UserOut])
-def list_users(request, search: Optional[str] = None, role: Optional[str] = None):
-    _check_admin(request.auth)
+@router.get("/users/", response_model=list[UserOut])
+def list_users(
+    search: Optional[str] = None,
+    role: Optional[str] = None,
+    user: User = Depends(require_auth),
+):
+    _check_admin(user)
     qs = User.objects.order_by('created_at')
     if search and search.strip():
         qs = qs.filter(Q(name__icontains=search) | Q(email__icontains=search))
@@ -119,15 +102,13 @@ def list_users(request, search: Optional[str] = None, role: Optional[str] = None
     return list(qs)
 
 
-@router.post("/users/", response=UserOut)
-def create_user(request, body: UserCreateIn):
-    _check_admin(request.auth)
+@router.post("/users/", response_model=UserOut)
+def create_user(body: UserCreateIn, user: User = Depends(require_auth)):
+    _check_admin(user)
     if User.objects.filter(email__iexact=body.email).exists():
-        from ninja.errors import HttpError
-        raise HttpError(400, "Email đã tồn tại trong hệ thống.")
-
+        raise HTTPException(status_code=400, detail="Email đã tồn tại trong hệ thống.")
     bg, color = ROLE_AVATAR_COLORS.get(body.role, ('#dbeafe', '#1d4ed8'))
-    user = User(
+    new_user = User(
         name=body.name,
         email=body.email.strip().lower(),
         role=body.role,
@@ -136,86 +117,73 @@ def create_user(request, body: UserCreateIn):
         avatar_color=color,
         is_staff=(body.role == 'admin'),
     )
-    user.set_password(body.password)
-    user.save()
-    _audit(request.auth, f"Thêm user mới: {user.name} ({user.role})", user.id)
-    return user
+    new_user.set_password(body.password)
+    new_user.save()
+    _audit(user, f"Thêm user mới: {new_user.name} ({new_user.role})", new_user.id)
+    return new_user
 
 
-@router.get("/users/{user_id}/", response=UserOut)
-def get_user(request, user_id: int):
-    _check_admin(request.auth)
+@router.get("/users/{user_id}/", response_model=UserOut)
+def get_user(user_id: int, user: User = Depends(require_auth)):
+    _check_admin(user)
     try:
         return User.objects.get(pk=user_id)
     except User.DoesNotExist:
-        from ninja.errors import HttpError
-        raise HttpError(404, "Người dùng không tồn tại.")
+        raise HTTPException(status_code=404, detail="Người dùng không tồn tại.")
 
 
-@router.patch("/users/{user_id}/", response=UserOut)
-def update_user(request, user_id: int, body: UserUpdateIn):
-    _check_admin(request.auth)
+@router.patch("/users/{user_id}/", response_model=UserOut)
+def update_user(user_id: int, body: UserUpdateIn, user: User = Depends(require_auth)):
+    _check_admin(user)
     try:
-        user = User.objects.get(pk=user_id)
+        target = User.objects.get(pk=user_id)
     except User.DoesNotExist:
-        from ninja.errors import HttpError
-        raise HttpError(404, "Người dùng không tồn tại.")
-
+        raise HTTPException(status_code=404, detail="Người dùng không tồn tại.")
     if body.email is not None:
         email = body.email.strip().lower()
         if User.objects.filter(email__iexact=email).exclude(pk=user_id).exists():
-            from ninja.errors import HttpError
-            raise HttpError(400, "Email đã tồn tại trong hệ thống.")
-        user.email = email
-
+            raise HTTPException(status_code=400, detail="Email đã tồn tại trong hệ thống.")
+        target.email = email
     if body.name is not None:
-        user.name = body.name
-        user.initials = _initials(body.name)
-
-    if body.role is not None and body.role != user.role:
-        user.role = body.role
+        target.name = body.name
+        target.initials = _initials(body.name)
+    if body.role is not None and body.role != target.role:
+        target.role = body.role
         bg, color = ROLE_AVATAR_COLORS.get(body.role, ('#dbeafe', '#1d4ed8'))
-        user.avatar_bg = bg
-        user.avatar_color = color
-        user.is_staff = (body.role == 'admin')
-
-    user.save()
-    _audit(request.auth, f"Cập nhật tài khoản {user.name} — role: {user.role}", user.id)
-    return user
+        target.avatar_bg = bg
+        target.avatar_color = color
+        target.is_staff = (body.role == 'admin')
+    target.save()
+    _audit(user, f"Cập nhật tài khoản {target.name} — role: {target.role}", target.id)
+    return target
 
 
 @router.delete("/users/{user_id}/")
-def delete_user(request, user_id: int):
-    _check_admin(request.auth)
+def delete_user(user_id: int, user: User = Depends(require_auth)):
+    _check_admin(user)
     try:
-        user = User.objects.get(pk=user_id)
+        target = User.objects.get(pk=user_id)
     except User.DoesNotExist:
-        from ninja.errors import HttpError
-        raise HttpError(404, "Người dùng không tồn tại.")
-    name = user.name
-    user.delete()
-    _audit(request.auth, f"Xoá tài khoản {name}", user_id)
+        raise HTTPException(status_code=404, detail="Người dùng không tồn tại.")
+    name = target.name
+    target.delete()
+    _audit(user, f"Xoá tài khoản {name}", user_id)
     return {"detail": "Đã xoá tài khoản."}
 
 
-@router.post("/users/{user_id}/toggle-lock/", response=UserOut)
-def toggle_lock(request, user_id: int):
-    _check_admin(request.auth)
+@router.post("/users/{user_id}/toggle-lock/", response_model=UserOut)
+def toggle_lock(user_id: int, user: User = Depends(require_auth)):
+    _check_admin(user)
     try:
-        user = User.objects.get(pk=user_id)
+        target = User.objects.get(pk=user_id)
     except User.DoesNotExist:
-        from ninja.errors import HttpError
-        raise HttpError(404, "Người dùng không tồn tại.")
-
-    if user.role == 'admin':
-        from ninja.errors import HttpError
-        raise HttpError(400, "Không thể khoá tài khoản Admin.")
-    if user.pk == request.auth.pk:
-        from ninja.errors import HttpError
-        raise HttpError(400, "Không thể tự khoá tài khoản của mình.")
-
-    user.locked = not user.locked
-    user.save(update_fields=['locked'])
-    action_text = "Khoá" if user.locked else "Mở khoá"
-    _audit(request.auth, f"{action_text} tài khoản {user.name}", user.id)
-    return user
+        raise HTTPException(status_code=404, detail="Người dùng không tồn tại.")
+    if target.role == 'admin':
+        raise HTTPException(status_code=400, detail="Không thể khoá tài khoản Admin.")
+    if target.pk == user.pk:
+        raise HTTPException(status_code=400, detail="Không thể tự khoá tài khoản của mình.")
+    target.locked = not target.locked
+    target.save(update_fields=['locked'])
+    action_text = "Khoá" if target.locked else "Mở khoá"
+    _audit(user, f"{action_text} tài khoản {target.name}", target.id)
+    return target

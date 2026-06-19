@@ -228,7 +228,7 @@ MEDIA_ROOT = BASE_DIR / 'media'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-# REST_FRAMEWORK block đã được thay bằng django-ninja (xem encycam/api.py)
+# REST_FRAMEWORK không dùng DRF views — chỉ giữ lại cho djangorestframework-simplejwt (JWT)
 
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(hours=8),
