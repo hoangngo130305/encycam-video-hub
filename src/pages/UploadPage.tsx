@@ -20,9 +20,12 @@ export default function UploadPage() {
     reuploadNum ? videos.find(v => v.id === reuploadNum) : undefined
   );
 
+  const CATEGORIES = ['ENCY CAM', 'ENCY ROBOT', 'KHÁCH HÀNG TIÊU BIỂU'];
+
   const [file, setFile] = useState<File | null>(null);
   const [title, setTitle] = useState(reuploadVideo?.title ?? '');
   const [notes, setNotes] = useState('');
+  const [category, setCategory] = useState(reuploadVideo?.category ?? 'ENCY CAM');
   const [drag, setDrag] = useState(false);
   const [uploadState, setUploadState] = useState<UploadState>('idle');
   const [progress, setProgress] = useState(0);
@@ -93,12 +96,9 @@ export default function UploadPage() {
 
     const formData = new FormData();
     formData.append('file', file);
-    if (!reuploadVideo) {
-      formData.append('title', title.trim());
-      if (notes.trim()) formData.append('notes', notes.trim());
-    } else {
-      if (notes.trim()) formData.append('notes', notes.trim());
-    }
+    if (!reuploadVideo) formData.append('title', title.trim());
+    formData.append('category', category);
+    if (notes.trim()) formData.append('notes', notes.trim());
 
     try {
       if (reuploadVideo) {
@@ -236,6 +236,19 @@ export default function UploadPage() {
                 disabled={!!reuploadVideo} />
               <Textarea label="Ghi chú cho Reviewer" placeholder="Mô tả ngắn nội dung, điểm cần chú ý…"
                 value={notes} onChange={e => setNotes(e.target.value)} className="min-h-[80px]" />
+
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-semibold text-gray-700 dark:text-gray-300">Danh mục</label>
+                <select
+                  value={category}
+                  onChange={e => setCategory(e.target.value)}
+                  className="w-full px-3 py-2 text-sm bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg text-gray-900 dark:text-gray-100 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 cursor-pointer"
+                >
+                  {CATEGORIES.map(c => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+              </div>
 
               {reuploadVideo && (
                 <div className="p-3 rounded-lg bg-orange-50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-800 text-xs text-orange-700 dark:text-orange-400">

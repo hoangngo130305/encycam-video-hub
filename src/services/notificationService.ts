@@ -1,12 +1,10 @@
 import { req } from './api';
-import type { Page } from './api';
 import type { Notification } from '../types';
 
 export const notificationService = {
-  list: async (params?: { read?: boolean }): Promise<Notification[]> => {
+  list: (params?: { read?: boolean }): Promise<Notification[]> => {
     const qs = params?.read !== undefined ? `?read=${params.read}` : '';
-    const res = await req<Page<Notification>>(`/api/notifications/${qs}`);
-    return res.results;
+    return req<Notification[]>(`/api/notifications/${qs}`);
   },
 
   markRead: (id: number) =>

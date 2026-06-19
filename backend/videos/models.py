@@ -30,10 +30,9 @@ class Video(models.Model):
     ]
 
     CATEGORY_CHOICES = [
-        ('Tutorial',    'Tutorial'),
-        ('Review',      'Review'),
-        ('Comparison',  'Comparison'),
-        ('Other',       'Khác'),
+        ('ENCY CAM',             'ENCY CAM'),
+        ('ENCY ROBOT',           'ENCY ROBOT'),
+        ('KHÁCH HÀNG TIÊU BIỂU', 'KHÁCH HÀNG TIÊU BIỂU'),
     ]
 
     title           = models.CharField('Tên video', max_length=500)
@@ -52,7 +51,7 @@ class Video(models.Model):
     updated_at      = models.DateTimeField('Cập nhật lần cuối', auto_now=True)
     notes           = models.TextField('Ghi chú', blank=True)
     thumb_gradient  = models.CharField('Gradient thumbnail', max_length=100, default=random_gradient)
-    category        = models.CharField('Danh mục', max_length=50, choices=CATEGORY_CHOICES, default='Tutorial')
+    category        = models.CharField('Danh mục', max_length=50, choices=CATEGORY_CHOICES, default='ENCY CAM')
 
     class Meta:
         db_table = 'videos'
@@ -99,7 +98,7 @@ class Comment(models.Model):
     user       = models.ForeignKey('accounts.User', verbose_name='Người dùng', related_name='comments', on_delete=models.CASCADE)
     text       = models.TextField('Nội dung')
     # Stores mm:ss video timestamp, e.g. "04:32" — blank if no timestamp
-    timestamp  = models.CharField('Timestamp (mm:ss)', max_length=10, blank=True)
+    timestamp  = models.CharField('Timestamp (mm:ss)', max_length=10, blank=True, null=True, default=None)
     resolved   = models.BooleanField('Đã xử lý', default=False)
     created_at = models.DateTimeField('Ngày tạo', auto_now_add=True)
 

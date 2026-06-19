@@ -1,17 +1,15 @@
 import { req } from './api';
 import type { User, Role } from '../types';
-import type { Page } from './api';
 
 interface UserCreatePayload { name: string; email: string; role: Role; password?: string }
 interface UserUpdatePayload { name?: string; email?: string; role?: Role }
 
 export const userService = {
-  list: async (params?: { search?: string; role?: string }): Promise<User[]> => {
+  list: (params?: { search?: string; role?: string }): Promise<User[]> => {
     const qs = new URLSearchParams(
       Object.fromEntries(Object.entries(params ?? {}).filter(([, v]) => v)) as Record<string, string>
     ).toString();
-    const res = await req<Page<User>>(`/api/users/${qs ? '?' + qs : ''}`);
-    return res.results;
+    return req<User[]>(`/api/users/${qs ? '?' + qs : ''}`);
   },
 
   create: (data: UserCreatePayload) =>

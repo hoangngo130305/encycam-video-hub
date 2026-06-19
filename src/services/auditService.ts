@@ -1,23 +1,23 @@
 import { req, getToken } from './api';
 import type { AuditEntry } from '../types';
-
 import { API_BASE as BASE } from '../config';
 
 interface AuditListParams { search?: string; resourceType?: string; page?: string }
 
-interface PaginatedAudit {
-  count: number;
-  next: string | null;
-  previous: string | null;
+export interface AuditPage {
   results: AuditEntry[];
+  count: number;
 }
 
 export const auditService = {
-  list: (params: AuditListParams = {}): Promise<PaginatedAudit> => {
+  list: async (params: AuditListParams = {}): Promise<AuditPage> => {
+    // Backend trả array thẳng (max 200), bỏ qua 'page' vì không có server-side pagination
+    const { page: _page, ...rest } = params;
     const qs = new URLSearchParams(
-      Object.fromEntries(Object.entries(params).filter(([, v]) => v)) as Record<string, string>
+      Object.fromEntries(Object.entries(rest).filter(([, v]) => v)) as Record<string, string>
     ).toString();
-    return req<PaginatedAudit>(`/api/audit/${qs ? '?' + qs : ''}`);
+    const results = await req<AuditEntry[]>(`/api/audit/${qs ? '?' + qs : ''}`);
+    return { results, count: results.length };
   },
 
   exportCSV: async (params: Omit<AuditListParams, 'page'> = {}) => {

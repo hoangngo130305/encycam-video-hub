@@ -32,6 +32,7 @@ export default function VideoListPage() {
   const [searchParams] = useSearchParams();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>(searchParams.get('status') ?? 'all');
+  const [categoryFilter, setCategoryFilter] = useState<string>('');
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const [loading, setLoading] = useState(true);
 
@@ -45,7 +46,7 @@ export default function VideoListPage() {
     if (!currentUser) return;
     setLoading(true);
     videoService.list()
-      .then(res => setVideos(res.results))
+      .then(videos => setVideos(videos))
       .catch(() => {})
       .finally(() => setLoading(false));
   }, [currentUser, setVideos]);
@@ -66,12 +67,13 @@ export default function VideoListPage() {
     return visibleVideos.filter(v => {
       const allowed = FILTER_STATUS_MAP[statusFilter] || FILTER_STATUS_MAP.all;
       const matchStatus = allowed.includes(v.status);
+      const matchCategory = !categoryFilter || v.category === categoryFilter;
       const matchSearch = !search ||
         v.title.toLowerCase().includes(search.toLowerCase()) ||
         v.btv?.name?.toLowerCase().includes(search.toLowerCase());
-      return matchStatus && matchSearch;
+      return matchStatus && matchCategory && matchSearch;
     });
-  }, [visibleVideos, statusFilter, search]);
+  }, [visibleVideos, statusFilter, categoryFilter, search]);
 
   const titleMap: Record<string, string> = {
     btv: 'Video của tôi', reviewer: 'Hàng chờ review',
@@ -92,11 +94,23 @@ export default function VideoListPage() {
 
       <div className="flex-1 p-4 lg:p-6 overflow-y-auto space-y-4">
         <div className="flex flex-col gap-3">
-          <div className="relative flex-1 max-w-sm">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input value={search} onChange={e => setSearch(e.target.value)}
-              placeholder="Tìm video, BTV..."
-              className="w-full pl-9 pr-3 py-2 text-sm bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg text-gray-900 dark:text-gray-100 placeholder:text-gray-400 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10" />
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="relative flex-1 min-w-[180px] max-w-sm">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input value={search} onChange={e => setSearch(e.target.value)}
+                placeholder="Tìm video, BTV..."
+                className="w-full pl-9 pr-3 py-2 text-sm bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg text-gray-900 dark:text-gray-100 placeholder:text-gray-400 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10" />
+            </div>
+            <select
+              value={categoryFilter}
+              onChange={e => setCategoryFilter(e.target.value)}
+              className="px-3 py-2 text-sm bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg text-gray-700 dark:text-gray-300 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 cursor-pointer"
+            >
+              <option value="">Tất cả danh mục</option>
+              {['ENCY CAM', 'ENCY ROBOT', 'KHÁCH HÀNG TIÊU BIỂU'].map(c => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+            </select>
           </div>
           <VideoFilterBar selectedFilter={statusFilter} onFilterChange={setStatusFilter} isMobile={isMobile} />
         </div>
@@ -143,7 +157,14 @@ export default function VideoListPage() {
                           </div>
                           <div>
                             <div className="font-semibold text-sm text-gray-900 dark:text-gray-100 max-w-[280px] truncate">{v.title}</div>
-                            <div className="text-xs text-gray-400 dark:text-gray-600 font-mono">{v.fileId}</div>
+                            <div className="flex items-center gap-2 mt-0.5">
+                              <span className="text-xs text-gray-400 dark:text-gray-600 font-mono">{v.fileId}</span>
+                              {v.category && (
+                                <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400">
+                                  {v.category}
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </div>
                       </td>
@@ -213,6 +234,11 @@ export default function VideoListPage() {
                       <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                         <StatusBadge status={v.status as VideoStatus} />
                         <span className="font-mono text-xs text-violet-600 dark:text-violet-400">v{v.currentVersion}</span>
+                        {v.category && (
+                          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400">
+                            {v.category}
+                          </span>
+                        )}
                         <span className="text-xs text-gray-400 dark:text-gray-500">{timeAgo(v.updatedAt)}</span>
                       </div>
                     </div>

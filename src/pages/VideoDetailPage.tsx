@@ -6,10 +6,29 @@ import {
 } from 'lucide-react';
 import { useAppStore } from '../store/appStore';
 import { videoService } from '../services/videoService';
+import { API_BASE } from '../config';
 import TopBar from '../components/layout/TopBar';
 import { StatusBadge, Avatar, Button, Card, Modal, WorkflowTimeline, Textarea, EmptyState } from '../components/ui';
 import { cn } from '../lib/utils';
 import type { Video as VideoType, Comment } from '../types';
+
+/**
+ * Đảm bảo URL media luôn dùng đúng origin của API_BASE.
+ * DRF đôi khi build URL với host nội bộ (127.0.0.1) khi chạy sau proxy —
+ * hàm này ghi đè origin bằng API_BASE để máy khác luôn load được.
+ */
+function toMediaUrl(url: string): string {
+  if (!url) return '';
+  try {
+    const media = new URL(url);
+    const api   = new URL(API_BASE);
+    media.protocol = api.protocol;
+    media.host     = api.host;
+    return media.toString();
+  } catch {
+    return url.startsWith('/') ? `${API_BASE}${url}` : url;
+  }
+}
 
 type Tab = 'video' | 'comments' | 'history';
 
@@ -213,7 +232,7 @@ export default function VideoDetailPage() {
                       className="w-full aspect-video bg-black"
                       preload="metadata"
                     >
-                      <source src={ver.file} type="video/mp4" />
+                      <source src={toMediaUrl(ver.file)} type="video/mp4" />
                     </video>
                   ) : (
                     <div className={`aspect-video bg-gradient-to-br ${video.thumbGradient} relative flex items-center justify-center`}>

@@ -25,6 +25,7 @@ async function tryRefresh(): Promise<boolean> {
     if (!res.ok) { clearTokens(); return false; }
     const data = await res.json();
     localStorage.setItem('accessToken', data.access);
+    if (data.refresh) localStorage.setItem('refreshToken', data.refresh);
     return true;
   } catch {
     clearTokens();

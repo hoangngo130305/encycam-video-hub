@@ -1,5 +1,4 @@
 import { req } from './api';
-import type { Page } from './api';
 import type { Video, Comment } from '../types';
 
 interface VideoListParams {
@@ -7,19 +6,12 @@ interface VideoListParams {
   search?: string;
 }
 
-interface PaginatedVideos {
-  count: number;
-  next: string | null;
-  previous: string | null;
-  results: Video[];
-}
-
 export const videoService = {
-  list: (params: VideoListParams = {}): Promise<PaginatedVideos> => {
+  list: (params: VideoListParams = {}): Promise<Video[]> => {
     const qs = new URLSearchParams(
       Object.fromEntries(Object.entries(params).filter(([, v]) => v)) as Record<string, string>
     ).toString();
-    return req<PaginatedVideos>(`/api/videos/${qs ? '?' + qs : ''}`);
+    return req<Video[]>(`/api/videos/${qs ? '?' + qs : ''}`);
   },
 
   get: (id: number) => req<Video>(`/api/videos/${id}/`),
@@ -51,15 +43,13 @@ export const videoService = {
       body: JSON.stringify({ reason }),
     }),
 
-  listComments: async (videoId: number): Promise<Comment[]> => {
-    const res = await req<Page<Comment>>(`/api/videos/${videoId}/comments/`);
-    return res.results;
-  },
+  listComments: (videoId: number): Promise<Comment[]> =>
+    req<Comment[]>(`/api/videos/${videoId}/comments/`),
 
   addComment: (videoId: number, text: string, timestamp?: string) =>
     req<Comment>(`/api/videos/${videoId}/comments/`, {
       method: 'POST',
-      body: JSON.stringify({ text, timestamp: timestamp ?? '' }),
+      body: JSON.stringify({ text, timestamp: timestamp || null }),
     }),
 
   resolveComment: (commentId: number) =>
