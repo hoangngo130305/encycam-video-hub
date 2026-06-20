@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Play, MessageSquare, History, CheckCircle2, XCircle, Send,
-  RotateCcw, Upload, Clock, Video, X
+  RotateCcw, Upload, Clock, Video, X, Download
 } from 'lucide-react';
 import { useAppStore } from '../store/appStore';
 import { videoService } from '../services/videoService';
@@ -51,6 +51,7 @@ export default function VideoDetailPage() {
   const [comments, setComments] = useState<Comment[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
+  const [downloadLoading, setDownloadLoading] = useState(false);
 
   const [activeTab, setActiveTab] = useState<Tab>('video');
   const [commentText, setCommentText] = useState('');
@@ -192,17 +193,35 @@ export default function VideoDetailPage() {
     }
   };
 
+  const doDownload = async () => {
+    if (!video) return;
+    setDownloadLoading(true);
+    try {
+      await videoService.download(video.id, video.fileId, video.title, video.currentVersion);
+      showToast(`Đang tải xuống "${video.title}"`, 'success');
+    } catch (err: unknown) {
+      showToast(err instanceof Error ? err.message : 'Không thể tải video', 'error');
+    } finally {
+      setDownloadLoading(false);
+    }
+  };
+
   const backBtn = <Button variant="ghost" size="sm" icon={<ArrowLeft size={13} />} onClick={() => navigate(-1)}>Quay lại</Button>;
   const reuploadBtn = (role === 'btv' && (video.status === 'needs_revision' || video.status === 'rejected')) ? (
     <Button variant="primary" size="sm" icon={<Upload size={13} />} onClick={() => navigate(`/upload?reupload=${video.id}`)}>
       Re-upload v{video.currentVersion + 1}
     </Button>
   ) : null;
+  const downloadBtn = ((role === 'admin' || role === 'final') && video.status === 'approved') ? (
+    <Button variant="success" size="sm" icon={<Download size={13} />} loading={downloadLoading} onClick={doDownload}>
+      Tải xuống
+    </Button>
+  ) : null;
 
   return (
     <div className="flex flex-col h-full">
       <TopBar title={video.title} subtitle={`${video.fileId} · v${video.currentVersion}`}
-        actions={<div className="flex gap-2">{backBtn}{reuploadBtn}</div>} />
+        actions={<div className="flex gap-2">{backBtn}{reuploadBtn}{downloadBtn}</div>} />
 
       {/* Mobile tabs */}
       <div className="flex lg:hidden border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950">
@@ -365,6 +384,18 @@ export default function VideoDetailPage() {
                     <Button variant="success" icon={<CheckCircle2 size={13} />} loading={actionLoading} onClick={() => setApproveModal(true)}>Approve — Xuất bản</Button>
                     <Button variant="danger" icon={<XCircle size={13} />} loading={actionLoading} onClick={() => setRejectModal(true)}>Reject — Từ chối</Button>
                   </div>
+                </Card>
+              )}
+
+              {(role === 'admin' || role === 'final') && video.status === 'approved' && (
+                <Card className="p-4 border-l-4 border-green-500">
+                  <h3 className="font-bold text-sm text-gray-900 dark:text-gray-100 mb-1">Tải xuống video</h3>
+                  <p className="text-xs text-gray-500 dark:text-gray-500 mb-3">
+                    Video đã được duyệt cuối. Tải về phiên bản hiện tại (v{video.currentVersion}).
+                  </p>
+                  <Button variant="success" icon={<Download size={13} />} loading={downloadLoading} onClick={doDownload}>
+                    Tải xuống v{video.currentVersion}
+                  </Button>
                 </Card>
               )}
             </div>

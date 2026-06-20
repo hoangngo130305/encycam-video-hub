@@ -1,9 +1,11 @@
+import os
 import re
 from typing import Optional
+from django.conf import settings as django_settings
 from django.db.models import Q
 from django.core.files.uploadedfile import InMemoryUploadedFile
 from fastapi import APIRouter, HTTPException, Depends, File, Form, Request, UploadFile
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel
 
@@ -381,6 +383,28 @@ def reject_video(
         _notify(video.reviewer, 'reject', 'Video bị từ chối',
                 f'Video "{video.title}" đã bị Duyệt cuối từ chối.', video)
     return _make_video_detail(request, _get_video_or_404(video_id))
+
+
+@router.get("/videos/{video_id}/download/")
+def download_video(video_id: int, user: User = Depends(require_auth)):
+    if user.role not in ('admin', 'final'):
+        raise HTTPException(status_code=403, detail="Chỉ Admin hoặc Duyệt cuối mới có thể tải video về máy.")
+    video = _get_video_or_404(video_id)
+    if video.status != 'approved':
+        raise HTTPException(status_code=403, detail="Chỉ có thể tải video đã được duyệt cuối (Approved).")
+    try:
+        ver = video.versions.get(number=video.current_version)
+    except VideoVersion.DoesNotExist:
+        raise HTTPException(status_code=404, detail="Không tìm thấy phiên bản video hiện tại.")
+    if not ver.file or not ver.file.name:
+        raise HTTPException(status_code=404, detail="Video chưa có file.")
+    file_path = os.path.join(django_settings.MEDIA_ROOT, ver.file.name)
+    if not os.path.isfile(file_path):
+        raise HTTPException(status_code=404, detail="File video không tồn tại trên server.")
+    _audit(user, f'Tải xuống "{video.title}" v{video.current_version}', video)
+    safe_title = re.sub(r'[^\w\s\-]', '', video.title).strip()[:80]
+    filename = f"{video.file_id}_{safe_title}_v{video.current_version}.mp4"
+    return FileResponse(path=file_path, media_type='video/mp4', filename=filename)
 
 
 @router.post("/videos/{video_id}/reupload/", response_model=VideoDetailOut)

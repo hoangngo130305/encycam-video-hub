@@ -73,5 +73,37 @@ export async function req<T>(
   return res.json() as Promise<T>;
 }
 
+export async function downloadReq(path: string, filename: string, retry = true): Promise<void> {
+  const headers: Record<string, string> = {};
+  const tok = getToken();
+  if (tok) headers['Authorization'] = `Bearer ${tok}`;
+
+  const res = await fetch(`${BASE}${path}`, { headers });
+
+  if (res.status === 401 && retry) {
+    const ok = await tryRefresh();
+    if (ok) return downloadReq(path, filename, false);
+    clearTokens();
+    window.dispatchEvent(new Event('auth:expired'));
+    throw new Error('Phiên đăng nhập đã hết hạn');
+  }
+
+  if (!res.ok) {
+    let msg = `HTTP ${res.status}`;
+    try { const d = await res.json(); msg = d.detail || msg; } catch { /* ignore */ }
+    throw new Error(msg);
+  }
+
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 /** DRF PageNumberPagination wrapper */
 export interface Page<T> { count: number; next: string | null; previous: string | null; results: T[] }

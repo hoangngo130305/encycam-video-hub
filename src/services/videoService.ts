@@ -1,4 +1,4 @@
-import { req } from './api';
+import { req, downloadReq } from './api';
 import type { Video, Comment } from '../types';
 
 interface VideoListParams {
@@ -54,4 +54,7 @@ export const videoService = {
 
   resolveComment: (commentId: number) =>
     req<Comment>(`/api/comments/${commentId}/resolve/`, { method: 'PATCH' }),
+
+  download: (id: number, fileId: string, title: string, version: number) =>
+    downloadReq(`/api/videos/${id}/download/`, `${fileId}_${title}_v${version}.mp4`),
 };
