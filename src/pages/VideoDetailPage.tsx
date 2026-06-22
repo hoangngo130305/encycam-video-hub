@@ -335,7 +335,7 @@ export default function VideoDetailPage() {
                     </div>
                   )}
 
-                  {video.youtubeUrl && video.youtubeUploadStatus === 'done' ? (
+                  {video.youtubeUrl ? (
                     <a
                       href={video.youtubeUrl}
                       target="_blank"
