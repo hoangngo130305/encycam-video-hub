@@ -4,39 +4,22 @@ import { useAppStore } from '../../store/appStore';
 import { cn } from '../../lib/utils';
 import type { Role } from '../../types';
 
-function getBottomItems(role: Role) {
-  switch (role) {
-    case 'btv': return [
-      { to: '/dashboard', icon: LayoutDashboard, label: 'Home' },
-      { to: '/videos', icon: Video, label: 'Videos' },
-      { to: '/upload', icon: Upload, label: 'Upload' },
-      { to: '/notifications', icon: Bell, label: 'Thông báo' },
-    ];
-    case 'reviewer': return [
-      { to: '/dashboard', icon: LayoutDashboard, label: 'Queue' },
-      { to: '/videos', icon: Video, label: 'Videos' },
-      { to: '/notifications', icon: Bell, label: 'Thông báo' },
-    ];
-    case 'final': return [
-      { to: '/dashboard', icon: LayoutDashboard, label: 'Duyệt' },
-      { to: '/videos', icon: Video, label: 'Videos' },
-      { to: '/notifications', icon: Bell, label: 'Thông báo' },
-    ];
-    case 'admin': return [
-      { to: '/dashboard', icon: LayoutDashboard, label: 'Overview' },
-      { to: '/videos', icon: Video, label: 'Videos' },
-      { to: '/admin/users', icon: Users, label: 'Users' },
-      { to: '/notifications', icon: Bell, label: 'Alerts' },
-    ];
-    default: return [];
-  }
+function getBottomItems(allRoles: Role[]) {
+  const has = (...roles: Role[]) => roles.some(r => allRoles.includes(r));
+  const items = [{ to: '/dashboard', icon: LayoutDashboard, label: 'Home' }];
+  items.push({ to: '/videos', icon: Video, label: 'Videos' });
+  if (has('btv')) items.push({ to: '/upload', icon: Upload, label: 'Upload' });
+  if (has('admin')) items.push({ to: '/admin/users', icon: Users, label: 'Users' });
+  items.push({ to: '/notifications', icon: Bell, label: 'Thông báo' });
+  return items;
 }
 
 export default function BottomNav() {
   const { currentUser, unreadCount } = useAppStore();
   if (!currentUser) return null;
 
-  const items = getBottomItems(currentUser.role);
+  const allRoles: Role[] = (currentUser.allRoles?.length ? currentUser.allRoles : [currentUser.role]) as Role[];
+  const items = getBottomItems(allRoles);
   const unread = unreadCount(currentUser.role);
 
   return (

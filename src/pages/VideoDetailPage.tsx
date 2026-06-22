@@ -129,6 +129,7 @@ export default function VideoDetailPage() {
   }
 
   const role = currentUser.role;
+  const allRoles = currentUser.allRoles?.length ? currentUser.allRoles : [currentUser.role];
   const openComments = comments.filter(c => !c.resolved).length;
   const currentVersionNum = selectedVersion ?? video.currentVersion;
 
@@ -231,12 +232,12 @@ export default function VideoDetailPage() {
   };
 
   const backBtn = <Button variant="ghost" size="sm" icon={<ArrowLeft size={13} />} onClick={() => navigate(-1)}>Quay lại</Button>;
-  const reuploadBtn = (role === 'btv' && (video.status === 'needs_revision' || video.status === 'rejected')) ? (
+  const reuploadBtn = (allRoles.includes('btv') && (video.status === 'needs_revision' || video.status === 'rejected')) ? (
     <Button variant="primary" size="sm" icon={<Upload size={13} />} onClick={() => navigate(`/upload?reupload=${video.id}`)}>
       Re-upload v{video.currentVersion + 1}
     </Button>
   ) : null;
-  const downloadBtn = ((role === 'admin' || role === 'final') && video.status === 'approved') ? (
+  const downloadBtn = ((allRoles.includes('admin') || allRoles.includes('final')) && video.status === 'approved') ? (
     <Button variant="success" size="sm" icon={<Download size={13} />} loading={downloadLoading} onClick={doDownload}>
       Tải xuống
     </Button>
@@ -425,7 +426,7 @@ export default function VideoDetailPage() {
               </Card>
 
               {/* Action panels */}
-              {role === 'reviewer' && video.status === 'pending' && (
+              {allRoles.includes('reviewer') && video.status === 'pending' && (
                 <Card className="p-4 border-l-4 border-blue-500">
                   <h3 className="font-bold text-sm text-gray-900 dark:text-gray-100 mb-1">Bắt đầu review</h3>
                   <p className="text-xs text-gray-500 dark:text-gray-500 mb-3">Nhận video này vào hàng chờ của bạn để bắt đầu review.</p>
@@ -435,7 +436,7 @@ export default function VideoDetailPage() {
                 </Card>
               )}
 
-              {role === 'reviewer' && ['reviewing', 'needs_revision'].includes(video.status) && (
+              {allRoles.includes('reviewer') && ['reviewing', 'needs_revision'].includes(video.status) && (
                 <Card className="p-4 border-l-4 border-violet-500">
                   <h3 className="font-bold text-sm text-gray-900 dark:text-gray-100 mb-1">Kết luận review</h3>
                   <p className="text-xs text-gray-500 dark:text-gray-500 mb-3">Chỉ approve khi đã resolve hết toàn bộ comments open.</p>
@@ -446,7 +447,7 @@ export default function VideoDetailPage() {
                 </Card>
               )}
 
-              {(role === 'final' || role === 'admin') && video.status === 'reviewed' && (
+              {(allRoles.includes('final') || allRoles.includes('admin')) && video.status === 'reviewed' && (
                 <Card className="p-4 border-l-4 border-orange-500">
                   <h3 className="font-bold text-sm text-gray-900 dark:text-gray-100 mb-1">Quyết định duyệt cuối</h3>
                   <p className="text-xs text-gray-500 dark:text-gray-500 mb-3">Approve để xuất bản và đăng lên YouTube. Nếu reject, BTV và Reviewer sẽ nhận thông báo.</p>
@@ -457,7 +458,7 @@ export default function VideoDetailPage() {
                 </Card>
               )}
 
-              {(role === 'admin' || role === 'final') && video.status === 'approved' && (
+              {(allRoles.includes('admin') || allRoles.includes('final')) && video.status === 'approved' && (
                 <Card className="p-4 border-l-4 border-green-500">
                   <h3 className="font-bold text-sm text-gray-900 dark:text-gray-100 mb-1">Tải xuống video</h3>
                   <p className="text-xs text-gray-500 dark:text-gray-500 mb-3">
@@ -516,7 +517,7 @@ export default function VideoDetailPage() {
                           <CheckCircle2 size={13} className="text-green-600 dark:text-green-400 flex-shrink-0" />
                           <span className="text-xs font-semibold text-green-700 dark:text-green-400">Đã xử lý</span>
                         </div>
-                      ) : (role === 'reviewer' || role === 'final') ? (
+                      ) : (allRoles.includes('reviewer') || allRoles.includes('final') || allRoles.includes('admin')) ? (
                         <button
                           onClick={() => doResolve(c.id)}
                           className="w-full px-3 py-2 border-t border-orange-100 dark:border-orange-900/40 bg-orange-50/60 dark:bg-orange-950/20 rounded-b-xl flex items-center gap-2 hover:bg-green-50 dark:hover:bg-green-950/30 hover:border-green-200 dark:hover:border-green-800 group transition-all"
@@ -531,7 +532,7 @@ export default function VideoDetailPage() {
                   ))}
                 </div>
 
-                {role !== 'btv' ? (
+                {!allRoles.includes('btv') || allRoles.includes('reviewer') || allRoles.includes('final') || allRoles.includes('admin') ? (
                   <div className="p-3 border-t border-gray-100 dark:border-gray-800 flex-shrink-0">
                     <Textarea value={commentText} onChange={e => setCommentText(e.target.value)}
                       placeholder="Thêm comment… gợi ý: thêm mm:ss để gắn timestamp, VD: 04:32"

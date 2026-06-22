@@ -15,35 +15,43 @@ interface NavItem {
   badge?: number;
 }
 
-function getNavItems(role: Role, unread: number): NavItem[] {
-  const common = [{ to: '/notifications', icon: Bell, label: 'Thông báo', badge: unread }];
-  switch (role) {
-    case 'btv': return [
-      { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-      { to: '/videos', icon: Video, label: 'Video của tôi' },
-      { to: '/upload', icon: Upload, label: 'Upload video' },
-      ...common,
-    ];
-    case 'reviewer': return [
-      { to: '/dashboard', icon: ListChecks, label: 'Hàng chờ review' },
-      { to: '/videos', icon: Video, label: 'Tất cả video' },
-      ...common,
-    ];
-    case 'final': return [
-      { to: '/dashboard', icon: Gavel, label: 'Chờ duyệt cuối' },
-      { to: '/videos', icon: Video, label: 'Tất cả video' },
-      ...common,
-    ];
-    case 'admin': return [
-      { to: '/dashboard', icon: LayoutDashboard, label: 'Tổng quan' },
-      { to: '/videos', icon: Video, label: 'Tất cả video' },
-      { to: '/admin/users', icon: Users, label: 'Quản lý user' },
-      { to: '/admin/categories', icon: Tag, label: 'Danh mục' },
-      { to: '/admin/audit', icon: FileText, label: 'Audit log' },
-      { to: '/notifications', icon: AlertTriangle, label: 'Cảnh báo', badge: unread },
-    ];
-    default: return common;
+function getNavItems(allRoles: Role[], unread: number): NavItem[] {
+  const has = (...roles: Role[]) => roles.some(r => allRoles.includes(r));
+
+  const dashboardLabels: Partial<Record<Role, { icon: React.ElementType; label: string }>> = {
+    admin:    { icon: LayoutDashboard, label: 'Tổng quan' },
+    final:    { icon: Gavel,           label: 'Chờ duyệt cuối' },
+    reviewer: { icon: ListChecks,      label: 'Hàng chờ review' },
+    btv:      { icon: LayoutDashboard, label: 'Dashboard' },
+  };
+  const priority: Role[] = ['admin', 'final', 'reviewer', 'btv'];
+  const primaryRole = priority.find(r => allRoles.includes(r)) ?? 'btv';
+  const dash = dashboardLabels[primaryRole]!;
+
+  const items: NavItem[] = [{ to: '/dashboard', icon: dash.icon, label: dash.label }];
+
+  if (has('reviewer', 'final', 'admin')) {
+    items.push({ to: '/videos', icon: Video, label: 'Tất cả video' });
+  } else {
+    items.push({ to: '/videos', icon: Video, label: 'Video của tôi' });
   }
+
+  if (has('btv')) {
+    items.push({ to: '/upload', icon: Upload, label: 'Upload video' });
+  }
+
+  if (has('admin')) {
+    items.push(
+      { to: '/admin/users',      icon: Users,    label: 'Quản lý user' },
+      { to: '/admin/categories', icon: Tag,       label: 'Danh mục' },
+      { to: '/admin/audit',      icon: FileText,  label: 'Audit log' },
+      { to: '/notifications',    icon: AlertTriangle, label: 'Cảnh báo', badge: unread },
+    );
+  } else {
+    items.push({ to: '/notifications', icon: Bell, label: 'Thông báo', badge: unread });
+  }
+
+  return items;
 }
 
 const ROLE_ACCENT: Record<Role, string> = {
@@ -63,8 +71,9 @@ export default function Sidebar({ mobile, onClose }: SidebarProps) {
   const navigate = useNavigate();
   if (!currentUser) return null;
 
+  const allRoles: Role[] = (currentUser.allRoles?.length ? currentUser.allRoles : [currentUser.role]) as Role[];
   const unread = unreadCount(currentUser.role);
-  const navItems = getNavItems(currentUser.role, unread);
+  const navItems = getNavItems(allRoles, unread);
   const collapsed = !mobile && sidebarCollapsed;
 
   return (
@@ -140,7 +149,9 @@ export default function Sidebar({ mobile, onClose }: SidebarProps) {
               bg={currentUser.avatarBg} color={currentUser.avatarColor} size="sm" />
             <div className="flex-1 min-w-0">
               <div className="text-xs font-semibold text-gray-900 dark:text-gray-100 truncate">{currentUser.name}</div>
-              <RoleBadge role={currentUser.role} />
+              <div className="flex flex-wrap gap-1 mt-0.5">
+                {allRoles.map(r => <RoleBadge key={r} role={r} />)}
+              </div>
             </div>
             <button onClick={() => { logout(); navigate('/'); }}
               className="opacity-0 group-hover:opacity-100 w-6 h-6 rounded flex items-center justify-center text-gray-400 hover:text-red-500 transition-all">

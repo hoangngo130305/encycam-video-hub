@@ -20,12 +20,18 @@ export interface User {
   name: string;
   email: string;
   role: Role;
+  allRoles: Role[];
   initials: string;
   avatarBg: string;
   avatarColor: string;
   locked: boolean;
   createdAt: string;
   telegramChatId?: string;
+}
+
+export function hasRole(user: User, ...roles: Role[]): boolean {
+  const all = user.allRoles?.length ? user.allRoles : [user.role];
+  return roles.some(r => all.includes(r));
 }
 
 export interface VideoVersion {
@@ -57,6 +63,7 @@ export interface Video {
   youtubeUploadStatus?: 'idle' | 'uploading' | 'done' | 'failed';
   youtubeUploadProgress?: number;
 }
+
 
 export interface Comment {
   id: number;

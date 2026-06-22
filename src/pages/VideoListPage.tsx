@@ -53,11 +53,12 @@ export default function VideoListPage() {
 
   if (!currentUser) return null;
 
+  const allRoles = currentUser.allRoles?.length ? currentUser.allRoles : [currentUser.role];
   const role = currentUser.role;
 
-  // Reviewer: only show relevant statuses
+  // Reviewer: only show relevant statuses (unless also final/admin)
   let visibleVideos = videos;
-  if (role === 'reviewer') {
+  if (allRoles.includes('reviewer') && !allRoles.includes('final') && !allRoles.includes('admin')) {
     visibleVideos = videos.filter(v =>
       ['pending', 'reviewing', 'reviewed', 'needs_revision'].includes(v.status)
     );
@@ -85,7 +86,7 @@ export default function VideoListPage() {
       <TopBar
         title={titleMap[role] ?? 'Video'}
         subtitle={loading ? 'Đang tải...' : `${filtered.length} video`}
-        actions={role === 'btv' ? (
+        actions={allRoles.includes('btv') ? (
           <Button variant="primary" size="sm" icon={<Upload size={13} />} onClick={() => navigate('/upload')}>
             Upload video
           </Button>
@@ -124,7 +125,7 @@ export default function VideoListPage() {
             icon={<Video size={24} />}
             title="Không có video nào"
             description="Thử thay đổi bộ lọc hoặc upload video mới"
-            action={role === 'btv' ? (
+            action={allRoles.includes('btv') ? (
               <Button variant="primary" size="sm" onClick={() => navigate('/upload')} icon={<Upload size={13} />}>
                 Upload video
               </Button>
@@ -140,7 +141,7 @@ export default function VideoListPage() {
                     <th className="text-left px-4 py-3 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Video</th>
                     <th className="text-left px-4 py-3 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Ver.</th>
                     <th className="text-left px-4 py-3 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Trạng thái</th>
-                    {role !== 'btv' && <th className="text-left px-4 py-3 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide">BTV</th>}
+                    {!allRoles.includes('btv') && <th className="text-left px-4 py-3 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide">BTV</th>}
                     <th className="text-left px-4 py-3 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Reviewer</th>
                     <th className="text-left px-4 py-3 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Cập nhật</th>
                     <th className="px-4 py-3" />
@@ -174,7 +175,7 @@ export default function VideoListPage() {
                         </span>
                       </td>
                       <td className="px-4 py-3"><StatusBadge status={v.status as VideoStatus} /></td>
-                      {role !== 'btv' && (
+                      {!allRoles.includes('btv') && (
                         <td className="px-4 py-3">
                           {v.btv ? (
                             <div className="flex items-center gap-1.5">
@@ -201,13 +202,13 @@ export default function VideoListPage() {
                             onClick={e => { e.stopPropagation(); navigate(`/videos/${v.id}`); }}>
                             Xem
                           </Button>
-                          {(v.status === 'needs_revision' || v.status === 'rejected') && role === 'btv' && (
+                          {(v.status === 'needs_revision' || v.status === 'rejected') && allRoles.includes('btv') && (
                             <Button size="xs" variant="primary" icon={<Upload size={11} />}
                               onClick={e => { e.stopPropagation(); navigate(`/upload?reupload=${v.id}`); }}>
                               Re-upload
                             </Button>
                           )}
-                          {v.status === 'pending' && role === 'reviewer' && (
+                          {v.status === 'pending' && allRoles.includes('reviewer') && (
                             <Button size="xs" variant="primary" icon={<ChevronRight size={11} />}
                               onClick={e => { e.stopPropagation(); navigate(`/videos/${v.id}`); }}>
                               Review

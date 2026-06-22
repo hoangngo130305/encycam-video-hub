@@ -16,8 +16,9 @@ import CategoriesPage from './pages/admin/CategoriesPage';
 function ProtectedRoutes() {
   const { currentUser } = useAppStore();
   if (!currentUser) return <Navigate to="/login" replace />;
-  const isAdmin = currentUser.role === 'admin';
-  const isBtv = currentUser.role === 'btv';
+  const allRoles = currentUser.allRoles?.length ? currentUser.allRoles : [currentUser.role];
+  const isAdmin = allRoles.includes('admin');
+  const isBtv   = allRoles.includes('btv');
 
   return (
     <AppShell>

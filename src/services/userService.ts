@@ -1,8 +1,8 @@
 import { req } from './api';
 import type { User, Role } from '../types';
 
-interface UserCreatePayload { name: string; email: string; role: Role; password?: string }
-interface UserUpdatePayload { name?: string; email?: string; role?: Role; telegramChatId?: string }
+interface UserCreatePayload { name: string; email: string; role: Role; extraRoles?: Role[]; password?: string }
+interface UserUpdatePayload { name?: string; email?: string; role?: Role; extraRoles?: Role[]; telegramChatId?: string }
 
 export const userService = {
   list: (params?: { search?: string; role?: string }): Promise<User[]> => {
