@@ -246,3 +246,9 @@ CORS_ALLOW_CREDENTIALS = True
 # Khi chạy sau reverse proxy (nginx), dùng header X-Forwarded-Host để build đúng URL tuyệt đối
 USE_X_FORWARDED_HOST = True
 USE_X_FORWARDED_PORT = True
+
+# ── Telegram notifications ────────────────────────────────────────────────────
+TELEGRAM_BOT_TOKEN  = config('TELEGRAM_BOT_TOKEN',  default='')
+TELEGRAM_CHAT_ID    = config('TELEGRAM_CHAT_ID',    default='')
+# URL frontend để tạo link bấm vào trong Telegram (ví dụ: http://14.224.210.210:5173)
+APP_FRONTEND_URL    = config('APP_FRONTEND_URL',    default='')

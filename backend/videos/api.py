@@ -13,15 +13,85 @@ from accounts.models import User
 from accounts.schemas import UserOut
 from audit.models import AuditEntry
 from notifications.models import Notification
-from videos.models import Video, VideoVersion, Comment, HistoryEntry, random_gradient
+from videos.models import Video, VideoVersion, Comment, HistoryEntry, Category, random_gradient
 from videos.schemas import (
     VideoListOut, VideoDetailOut, VideoVersionOut,
     CommentOut, HistoryEntryOut,
     CommentCreateIn, RevisionNoteIn, RejectReasonIn,
+    CategoryOut,
 )
 from fastapi_auth import require_auth
+import telegram_service as tg
 
 router = APIRouter(tags=["videos"])
+
+
+# ── category CRUD ─────────────────────────────────────────────────────────────
+
+class CategoryIn(BaseModel):
+    name: str
+    youtubePlaylistId: str = ''
+    youtubeCategoryId: str = '22'
+
+
+def _make_category(c: Category) -> CategoryOut:
+    return CategoryOut(
+        id=c.id,
+        name=c.name,
+        youtubePlaylistId=c.youtube_playlist_id,
+        youtubeCategoryId=c.youtube_category_id,
+    )
+
+
+@router.get('/categories/', response_model=list[CategoryOut])
+def list_categories(user: User = Depends(require_auth)):
+    return [_make_category(c) for c in Category.objects.all()]
+
+
+@router.post('/categories/', response_model=CategoryOut, status_code=201)
+def create_category(body: CategoryIn, user: User = Depends(require_auth)):
+    if user.role != 'admin':
+        raise HTTPException(403, 'Chỉ Admin mới được tạo danh mục.')
+    if not body.name.strip():
+        raise HTTPException(400, 'Tên danh mục không được để trống.')
+    if Category.objects.filter(name=body.name.strip()).exists():
+        raise HTTPException(400, 'Danh mục này đã tồn tại.')
+    cat = Category.objects.create(
+        name=body.name.strip(),
+        youtube_playlist_id=body.youtubePlaylistId.strip(),
+        youtube_category_id=body.youtubeCategoryId.strip() or '22',
+    )
+    return _make_category(cat)
+
+
+@router.put('/categories/{cat_id}/', response_model=CategoryOut)
+def update_category(cat_id: int, body: CategoryIn, user: User = Depends(require_auth)):
+    if user.role != 'admin':
+        raise HTTPException(403, 'Chỉ Admin mới được sửa danh mục.')
+    try:
+        cat = Category.objects.get(pk=cat_id)
+    except Category.DoesNotExist:
+        raise HTTPException(404, 'Danh mục không tồn tại.')
+    if not body.name.strip():
+        raise HTTPException(400, 'Tên danh mục không được để trống.')
+    if Category.objects.filter(name=body.name.strip()).exclude(pk=cat_id).exists():
+        raise HTTPException(400, 'Tên danh mục đã được dùng bởi danh mục khác.')
+    cat.name = body.name.strip()
+    cat.youtube_playlist_id = body.youtubePlaylistId.strip()
+    cat.youtube_category_id = body.youtubeCategoryId.strip() or '22'
+    cat.save()
+    return _make_category(cat)
+
+
+@router.delete('/categories/{cat_id}/', status_code=204)
+def delete_category(cat_id: int, user: User = Depends(require_auth)):
+    if user.role != 'admin':
+        raise HTTPException(403, 'Chỉ Admin mới được xoá danh mục.')
+    try:
+        cat = Category.objects.get(pk=cat_id)
+    except Category.DoesNotExist:
+        raise HTTPException(404, 'Danh mục không tồn tại.')
+    cat.delete()
 
 
 class VideoUpdateIn(BaseModel):
@@ -141,6 +211,8 @@ def _make_video_list(v: Video) -> VideoListOut:
         thumbGradient=v.thumb_gradient,
         category=v.category,
         notes=v.notes,
+        youtubeVideoId=v.youtube_video_id or None,
+        youtubeUrl=v.youtube_url or None,
     )
 
 
@@ -226,6 +298,7 @@ def create_video(
             f'Video "{video.title}" đã được upload thành công và đang chờ Reviewer duyệt.', video)
     _notify_role('reviewer', 'upload', 'Video mới cần review',
                  f'{user.name} vừa upload "{video.title}", đang chờ review.', video)
+    tg.notify_upload(video.id, video.title, user.name, video.category)
     video.refresh_from_db()
     return _make_video_detail(request, _get_video_or_404(video.id))
 
@@ -306,6 +379,7 @@ def request_revision(
             f'Đã gửi yêu cầu sửa "{video.title}" tới BTV. Nội dung: {body.note}', video)
     _notify(video.btv, 'comment', 'Reviewer yêu cầu sửa lại',
             f'Reviewer {user.name} yêu cầu sửa "{video.title}": {body.note}', video)
+    tg.notify_revision(video.id, video.title, user.name, body.note, video.btv)
     return _make_video_detail(request, _get_video_or_404(video_id))
 
 
@@ -333,13 +407,14 @@ def send_to_final(request: Request, video_id: int, user: User = Depends(require_
             f'Video "{video.title}" đã qua review và đang chờ quyết định duyệt cuối.', video)
     _notify_role('final', 'upload', 'Chờ quyết định',
                  f'"{video.title}" đã được Reviewer approve, đang chờ quyết định cuối.', video)
+    tg.notify_send_to_final(video.id, video.title, user.name, video.category)
     return _make_video_detail(request, _get_video_or_404(video_id))
 
 
 @router.post("/videos/{video_id}/approve/", response_model=VideoDetailOut)
 def approve_video(request: Request, video_id: int, user: User = Depends(require_auth)):
-    if user.role != 'final':
-        raise HTTPException(status_code=403, detail="Chỉ Duyệt cuối mới có thể approve.")
+    if user.role not in ('final', 'admin'):
+        raise HTTPException(status_code=403, detail="Chỉ Duyệt cuối hoặc Admin mới có thể approve.")
     video = _get_video_or_404(video_id)
     if video.status != 'reviewed':
         raise HTTPException(status_code=400, detail='Chỉ có thể approve video ở trạng thái "Đã review".')
@@ -354,6 +429,13 @@ def approve_video(request: Request, video_id: int, user: User = Depends(require_
     if video.reviewer:
         _notify(video.reviewer, 'approve', 'Video đã duyệt',
                 f'Video "{video.title}" đã được duyệt cuối ✅', video)
+    # Tự động đăng lên YouTube trong background
+    try:
+        from youtube_service import upload_async
+        upload_async(video.id)
+    except Exception:
+        pass  # Không block approve nếu YouTube lỗi
+    tg.notify_approved(video.id, video.title, user.name, video.btv, video.reviewer)
     return _make_video_detail(request, _get_video_or_404(video_id))
 
 
@@ -364,8 +446,8 @@ def reject_video(
     body: RejectReasonIn,
     user: User = Depends(require_auth),
 ):
-    if user.role != 'final':
-        raise HTTPException(status_code=403, detail="Chỉ Duyệt cuối mới có thể reject.")
+    if user.role not in ('final', 'admin'):
+        raise HTTPException(status_code=403, detail="Chỉ Duyệt cuối hoặc Admin mới có thể reject.")
     video = _get_video_or_404(video_id)
     if video.status != 'reviewed':
         raise HTTPException(status_code=400, detail='Chỉ có thể reject video ở trạng thái "Đã review".')
@@ -382,6 +464,7 @@ def reject_video(
     if video.reviewer:
         _notify(video.reviewer, 'reject', 'Video bị từ chối',
                 f'Video "{video.title}" đã bị Duyệt cuối từ chối.', video)
+    tg.notify_rejected(video.id, video.title, user.name, body.reason, video.btv, video.reviewer)
     return _make_video_detail(request, _get_video_or_404(video_id))
 
 
@@ -398,7 +481,10 @@ def download_video(video_id: int, user: User = Depends(require_auth)):
         raise HTTPException(status_code=404, detail="Không tìm thấy phiên bản video hiện tại.")
     if not ver.file or not ver.file.name:
         raise HTTPException(status_code=404, detail="Video chưa có file.")
-    file_path = os.path.join(django_settings.MEDIA_ROOT, ver.file.name)
+    try:
+        file_path = ver.file.path
+    except ValueError:
+        raise HTTPException(status_code=404, detail="File video không có đường dẫn hợp lệ.")
     if not os.path.isfile(file_path):
         raise HTTPException(status_code=404, detail="File video không tồn tại trên server.")
     _audit(user, f'Tải xuống "{video.title}" v{video.current_version}', video)

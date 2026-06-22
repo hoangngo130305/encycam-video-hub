@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, CloudUpload, FileVideo, X, CheckCircle2, AlertCircle, Upload } from 'lucide-react';
 import { useAppStore } from '../store/appStore';
 import { videoService } from '../services/videoService';
+import { categoryService } from '../services/categoryService';
 import TopBar from '../components/layout/TopBar';
 import { Button, Input, Textarea, Card } from '../components/ui';
 import { cn } from '../lib/utils';
@@ -20,12 +21,24 @@ export default function UploadPage() {
     reuploadNum ? videos.find(v => v.id === reuploadNum) : undefined
   );
 
-  const CATEGORIES = ['ENCY CAM', 'ENCY ROBOT', 'KHÁCH HÀNG TIÊU BIỂU'];
+  const [categories, setCategories] = useState<string[]>([]);
+
+  useEffect(() => {
+    categoryService.list()
+      .then(list => {
+        const names = list.map(c => c.name);
+        setCategories(names);
+        setCategory(prev => prev || names[0] || '');
+      })
+      .catch(() => {});
+  }, []);
+
+  const defaultCategory = reuploadVideo?.category ?? '';
 
   const [file, setFile] = useState<File | null>(null);
   const [title, setTitle] = useState(reuploadVideo?.title ?? '');
   const [notes, setNotes] = useState('');
-  const [category, setCategory] = useState(reuploadVideo?.category ?? 'ENCY CAM');
+  const [category, setCategory] = useState(defaultCategory);
   const [drag, setDrag] = useState(false);
   const [uploadState, setUploadState] = useState<UploadState>('idle');
   const [progress, setProgress] = useState(0);
@@ -244,7 +257,7 @@ export default function UploadPage() {
                   onChange={e => setCategory(e.target.value)}
                   className="w-full px-3 py-2 text-sm bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg text-gray-900 dark:text-gray-100 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 cursor-pointer"
                 >
-                  {CATEGORIES.map(c => (
+                  {categories.map(c => (
                     <option key={c} value={c}>{c}</option>
                   ))}
                 </select>

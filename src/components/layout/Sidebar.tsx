@@ -1,7 +1,7 @@
 import { NavLink, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Video, Upload, Bell, Users, FileText, AlertTriangle,
-  ListChecks, Gavel, ChevronLeft, ChevronRight, LogOut, Settings, X
+  ListChecks, Gavel, ChevronLeft, ChevronRight, LogOut, Tag, X
 } from 'lucide-react';
 import { useAppStore } from '../../store/appStore';
 import { Avatar, RoleBadge } from '../ui';
@@ -38,6 +38,7 @@ function getNavItems(role: Role, unread: number): NavItem[] {
       { to: '/dashboard', icon: LayoutDashboard, label: 'Tổng quan' },
       { to: '/videos', icon: Video, label: 'Tất cả video' },
       { to: '/admin/users', icon: Users, label: 'Quản lý user' },
+      { to: '/admin/categories', icon: Tag, label: 'Danh mục' },
       { to: '/admin/audit', icon: FileText, label: 'Audit log' },
       { to: '/notifications', icon: AlertTriangle, label: 'Cảnh báo', badge: unread },
     ];

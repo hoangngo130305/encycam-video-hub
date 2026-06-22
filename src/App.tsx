@@ -11,6 +11,7 @@ import NotificationsPage from './pages/NotificationsPage';
 import AdminOverviewPage from './pages/admin/AdminOverviewPage';
 import UsersPage from './pages/admin/UsersPage';
 import AuditLogPage from './pages/admin/AuditLogPage';
+import CategoriesPage from './pages/admin/CategoriesPage';
 
 function ProtectedRoutes() {
   const { currentUser } = useAppStore();
@@ -30,6 +31,7 @@ function ProtectedRoutes() {
         {isAdmin && (
           <>
             <Route path="/admin/users" element={<UsersPage />} />
+            <Route path="/admin/categories" element={<CategoriesPage />} />
             <Route path="/admin/audit" element={<AuditLogPage />} />
           </>
         )}

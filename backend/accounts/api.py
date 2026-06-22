@@ -153,6 +153,8 @@ def update_user(user_id: int, body: UserUpdateIn, user: User = Depends(require_a
         target.avatar_bg = bg
         target.avatar_color = color
         target.is_staff = (body.role == 'admin')
+    if body.telegramChatId is not None:
+        target.telegram_chat_id = body.telegramChatId.strip()
     target.save()
     _audit(user, f"Cập nhật tài khoản {target.name} — role: {target.role}", target.id)
     return target

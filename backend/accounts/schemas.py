@@ -14,6 +14,7 @@ class UserOut(BaseSchema):
     avatarColor: str
     locked: bool
     createdAt: datetime
+    telegramChatId: Optional[str] = ''
 
 
 class LoginIn(BaseSchema):
@@ -56,3 +57,4 @@ class UserUpdateIn(BaseSchema):
     name: Optional[str] = None
     email: Optional[EmailStr] = None
     role: Optional[str] = None
+    telegramChatId: Optional[str] = None

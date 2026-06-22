@@ -4,6 +4,13 @@ from accounts.schemas import UserOut
 from shared import BaseSchema
 
 
+class CategoryOut(BaseSchema):
+    id: int
+    name: str
+    youtubePlaylistId: str
+    youtubeCategoryId: str
+
+
 class VideoVersionOut(BaseSchema):
     number: int
     uploadedAt: datetime
@@ -45,6 +52,8 @@ class VideoListOut(BaseSchema):
     thumbGradient: str
     category: str
     notes: str
+    youtubeVideoId: Optional[str] = None
+    youtubeUrl: Optional[str] = None
 
 
 class VideoDetailOut(VideoListOut):

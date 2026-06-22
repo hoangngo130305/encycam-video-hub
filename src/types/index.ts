@@ -1,5 +1,12 @@
 export type Role = 'admin' | 'btv' | 'reviewer' | 'final';
 
+export interface Category {
+  id: number;
+  name: string;
+  youtubePlaylistId: string;
+  youtubeCategoryId: string;
+}
+
 export type VideoStatus =
   | 'pending'
   | 'reviewing'
@@ -18,6 +25,7 @@ export interface User {
   avatarColor: string;
   locked: boolean;
   createdAt: string;
+  telegramChatId?: string;
 }
 
 export interface VideoVersion {
@@ -44,6 +52,8 @@ export interface Video {
   thumbGradient: string;
   history: HistoryEntry[];
   category: string;
+  youtubeVideoId?: string | null;
+  youtubeUrl?: string | null;
 }
 
 export interface Comment {

@@ -41,6 +41,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     initials    = models.CharField('Chữ viết tắt', max_length=3, blank=True)
     avatar_bg   = models.CharField('Màu nền avatar', max_length=20, blank=True, default='#dbeafe')
     avatar_color = models.CharField('Màu chữ avatar', max_length=20, blank=True, default='#1d4ed8')
+    telegram_chat_id = models.CharField('Telegram Chat ID', max_length=30, blank=True)
     locked      = models.BooleanField('Bị khoá', default=False)
     is_active   = models.BooleanField(default=True)
     is_staff    = models.BooleanField(default=False)

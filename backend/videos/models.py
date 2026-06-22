@@ -1,6 +1,23 @@
 import random
 from django.db import models
 
+
+class Category(models.Model):
+    name                 = models.CharField('Tên danh mục', max_length=100, unique=True)
+    youtube_playlist_id  = models.CharField('YouTube Playlist ID', max_length=60, blank=True)
+    youtube_category_id  = models.CharField('YouTube Category ID', max_length=5, default='22')
+    created_at           = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'categories'
+        ordering = ['name']
+        verbose_name = 'Danh mục'
+        verbose_name_plural = 'Danh mục'
+
+    def __str__(self):
+        return self.name
+
+
 THUMB_GRADIENTS = [
     'from-blue-500 to-purple-600',
     'from-slate-600 to-slate-800',
@@ -29,12 +46,6 @@ class Video(models.Model):
         ('needs_revision', 'Cần sửa lại'),
     ]
 
-    CATEGORY_CHOICES = [
-        ('ENCY CAM',             'ENCY CAM'),
-        ('ENCY ROBOT',           'ENCY ROBOT'),
-        ('KHÁCH HÀNG TIÊU BIỂU', 'KHÁCH HÀNG TIÊU BIỂU'),
-    ]
-
     title           = models.CharField('Tên video', max_length=500)
     file_id         = models.CharField('File ID', max_length=50, unique=True, blank=True)
     status          = models.CharField('Trạng thái', max_length=30, choices=STATUS_CHOICES, default='pending')
@@ -49,9 +60,11 @@ class Video(models.Model):
     )
     uploaded_at     = models.DateTimeField('Ngày tải lên', auto_now_add=True)
     updated_at      = models.DateTimeField('Cập nhật lần cuối', auto_now=True)
-    notes           = models.TextField('Ghi chú', blank=True)
-    thumb_gradient  = models.CharField('Gradient thumbnail', max_length=100, default=random_gradient)
-    category        = models.CharField('Danh mục', max_length=50, choices=CATEGORY_CHOICES, default='ENCY CAM')
+    notes               = models.TextField('Ghi chú', blank=True)
+    thumb_gradient      = models.CharField('Gradient thumbnail', max_length=100, default=random_gradient)
+    category            = models.CharField('Danh mục', max_length=100, blank=True, default='')
+    youtube_video_id    = models.CharField('YouTube Video ID', max_length=20, blank=True)
+    youtube_url         = models.URLField('YouTube URL', blank=True)
 
     class Meta:
         db_table = 'videos'
