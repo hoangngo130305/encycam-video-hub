@@ -213,6 +213,8 @@ def _make_video_list(v: Video) -> VideoListOut:
         notes=v.notes,
         youtubeVideoId=v.youtube_video_id or None,
         youtubeUrl=v.youtube_url or None,
+        youtubeUploadStatus=v.youtube_upload_status,
+        youtubeUploadProgress=v.youtube_upload_progress,
     )
 
 

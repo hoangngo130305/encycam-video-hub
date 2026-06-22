@@ -54,6 +54,8 @@ class VideoListOut(BaseSchema):
     notes: str
     youtubeVideoId: Optional[str] = None
     youtubeUrl: Optional[str] = None
+    youtubeUploadStatus: str = 'idle'
+    youtubeUploadProgress: int = 0
 
 
 class VideoDetailOut(VideoListOut):

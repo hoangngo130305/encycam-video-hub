@@ -65,6 +65,13 @@ class Video(models.Model):
     category            = models.CharField('Danh mục', max_length=100, blank=True, default='')
     youtube_video_id    = models.CharField('YouTube Video ID', max_length=20, blank=True)
     youtube_url         = models.URLField('YouTube URL', blank=True)
+    youtube_upload_status = models.CharField(
+        'Trạng thái upload YouTube',
+        max_length=20,
+        choices=[('idle', 'Chờ'), ('uploading', 'Đang upload'), ('done', 'Hoàn thành'), ('failed', 'Lỗi')],
+        default='idle',
+    )
+    youtube_upload_progress = models.PositiveSmallIntegerField('Tiến độ upload YouTube (%)', default=0)
 
     class Meta:
         db_table = 'videos'

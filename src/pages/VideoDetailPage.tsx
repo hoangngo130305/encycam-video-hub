@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Play, MessageSquare, History, CheckCircle2, XCircle, Send,
@@ -52,6 +52,7 @@ export default function VideoDetailPage() {
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [downloadLoading, setDownloadLoading] = useState(false);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const [activeTab, setActiveTab] = useState<Tab>('video');
   const [commentText, setCommentText] = useState('');
@@ -78,6 +79,29 @@ export default function VideoDetailPage() {
       setVideo(null);
     }).finally(() => setLoading(false));
   }, [videoId]);
+
+  // Poll khi video đã approved nhưng YouTube upload chưa xong
+  useEffect(() => {
+    const shouldPoll = video?.status === 'approved' &&
+      video.youtubeUploadStatus !== 'done' &&
+      video.youtubeUploadStatus !== 'failed';
+
+    if (shouldPoll) {
+      pollRef.current = setInterval(async () => {
+        try {
+          const updated = await videoService.get(videoId);
+          setVideo(updated);
+          updateVideoInList(updated);
+          if (updated.youtubeUploadStatus === 'done' || updated.youtubeUploadStatus === 'failed') {
+            if (pollRef.current) clearInterval(pollRef.current);
+          }
+        } catch {
+          // ignore poll errors
+        }
+      }, 3000);
+    }
+    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+  }, [video?.status, video?.youtubeUploadStatus, videoId]);
 
   if (!currentUser) return null;
 
@@ -311,7 +335,7 @@ export default function VideoDetailPage() {
                     </div>
                   )}
 
-                  {video.youtubeUrl && (
+                  {video.youtubeUrl && video.youtubeUploadStatus === 'done' ? (
                     <a
                       href={video.youtubeUrl}
                       target="_blank"
@@ -324,12 +348,33 @@ export default function VideoDetailPage() {
                       Xem trên YouTube
                       <ExternalLink size={10} />
                     </a>
-                  )}
-                  {video.status === 'approved' && !video.youtubeUrl && (
-                    <p className="mt-2 text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1">
-                      <Clock size={10} /> Đang đăng lên YouTube...
+                  ) : video.status === 'approved' && video.youtubeUploadStatus === 'failed' ? (
+                    <p className="mt-3 text-xs text-red-600 dark:text-red-400 flex items-center gap-1.5 px-3 py-2 rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800">
+                      <XCircle size={12} /> Đăng lên YouTube thất bại. Vui lòng liên hệ Admin.
                     </p>
-                  )}
+                  ) : video.status === 'approved' && (video.youtubeUploadStatus === 'uploading' || video.youtubeUploadStatus === 'idle' || !video.youtubeUploadStatus) ? (
+                    <div className="mt-3 px-3 py-2.5 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800">
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="text-xs text-amber-700 dark:text-amber-400 flex items-center gap-1.5 font-semibold">
+                          <div className="w-2.5 h-2.5 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
+                          Đang đăng lên YouTube...
+                        </span>
+                        {(video.youtubeUploadProgress ?? 0) > 0 && (
+                          <span className="text-xs font-bold text-amber-700 dark:text-amber-400">
+                            {video.youtubeUploadProgress}%
+                          </span>
+                        )}
+                      </div>
+                      {(video.youtubeUploadProgress ?? 0) > 0 && (
+                        <div className="w-full h-1.5 bg-amber-200 dark:bg-amber-900 rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-amber-500 dark:bg-amber-400 rounded-full transition-all duration-500"
+                            style={{ width: `${video.youtubeUploadProgress}%` }}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  ) : null}
                 </div>
               </Card>
 

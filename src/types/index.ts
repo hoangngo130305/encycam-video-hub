@@ -54,6 +54,8 @@ export interface Video {
   category: string;
   youtubeVideoId?: string | null;
   youtubeUrl?: string | null;
+  youtubeUploadStatus?: 'idle' | 'uploading' | 'done' | 'failed';
+  youtubeUploadProgress?: number;
 }
 
 export interface Comment {
