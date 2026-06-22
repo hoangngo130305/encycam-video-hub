@@ -83,8 +83,8 @@ export default function VideoDetailPage() {
   // Poll khi video đã approved nhưng YouTube upload chưa xong
   useEffect(() => {
     const shouldPoll = video?.status === 'approved' &&
-      video.youtubeUploadStatus !== 'done' &&
-      video.youtubeUploadStatus !== 'failed';
+      !video.youtubeUrl &&
+      video.youtubeUploadStatus === 'uploading';
 
     if (shouldPoll) {
       pollRef.current = setInterval(async () => {
@@ -92,7 +92,7 @@ export default function VideoDetailPage() {
           const updated = await videoService.get(videoId);
           setVideo(updated);
           updateVideoInList(updated);
-          if (updated.youtubeUploadStatus === 'done' || updated.youtubeUploadStatus === 'failed') {
+          if (updated.youtubeUrl || updated.youtubeUploadStatus === 'done' || updated.youtubeUploadStatus === 'failed') {
             if (pollRef.current) clearInterval(pollRef.current);
           }
         } catch {
@@ -352,7 +352,7 @@ export default function VideoDetailPage() {
                     <p className="mt-3 text-xs text-red-600 dark:text-red-400 flex items-center gap-1.5 px-3 py-2 rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800">
                       <XCircle size={12} /> Đăng lên YouTube thất bại. Vui lòng liên hệ Admin.
                     </p>
-                  ) : video.status === 'approved' && (video.youtubeUploadStatus === 'uploading' || video.youtubeUploadStatus === 'idle' || !video.youtubeUploadStatus) ? (
+                  ) : video.status === 'approved' && video.youtubeUploadStatus === 'uploading' ? (
                     <div className="mt-3 px-3 py-2.5 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800">
                       <div className="flex items-center justify-between mb-1.5">
                         <span className="text-xs text-amber-700 dark:text-amber-400 flex items-center gap-1.5 font-semibold">
