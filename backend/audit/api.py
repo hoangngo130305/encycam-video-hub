@@ -14,7 +14,7 @@ router = APIRouter(tags=["audit"])
 
 
 def _check_admin(user: User) -> None:
-    if user.role != 'admin':
+    if not user.has_role('admin'):
         raise HTTPException(status_code=403, detail="Chỉ Admin mới có quyền này.")
 
 

@@ -50,7 +50,7 @@ def list_categories(user: User = Depends(require_auth)):
 
 @router.post('/categories/', response_model=CategoryOut, status_code=201)
 def create_category(body: CategoryIn, user: User = Depends(require_auth)):
-    if user.role != 'admin':
+    if not user.has_role('admin'):
         raise HTTPException(403, 'Chỉ Admin mới được tạo danh mục.')
     if not body.name.strip():
         raise HTTPException(400, 'Tên danh mục không được để trống.')
@@ -66,7 +66,7 @@ def create_category(body: CategoryIn, user: User = Depends(require_auth)):
 
 @router.put('/categories/{cat_id}/', response_model=CategoryOut)
 def update_category(cat_id: int, body: CategoryIn, user: User = Depends(require_auth)):
-    if user.role != 'admin':
+    if not user.has_role('admin'):
         raise HTTPException(403, 'Chỉ Admin mới được sửa danh mục.')
     try:
         cat = Category.objects.get(pk=cat_id)
@@ -85,7 +85,7 @@ def update_category(cat_id: int, body: CategoryIn, user: User = Depends(require_
 
 @router.delete('/categories/{cat_id}/', status_code=204)
 def delete_category(cat_id: int, user: User = Depends(require_auth)):
-    if user.role != 'admin':
+    if not user.has_role('admin'):
         raise HTTPException(403, 'Chỉ Admin mới được xoá danh mục.')
     try:
         cat = Category.objects.get(pk=cat_id)
@@ -251,7 +251,7 @@ def list_videos(
     user: User = Depends(require_auth),
 ):
     qs = _video_qs()
-    if user.role == 'btv':
+    if user.has_role('btv') and not user.has_role('reviewer', 'final', 'admin'):
         qs = qs.filter(btv=user)
     if status and status.strip():
         qs = qs.filter(status=status)
@@ -276,7 +276,7 @@ def create_video(
     file: Optional[UploadFile] = File(None),
     user: User = Depends(require_auth),
 ):
-    if user.role != 'btv':
+    if not user.has_role('btv'):
         raise HTTPException(status_code=403, detail="Chỉ BTV mới có thể upload video.")
     if not file or not file.filename:
         raise HTTPException(status_code=400, detail="Vui lòng đính kèm file video (.mp4).")
@@ -323,10 +323,10 @@ def update_video(
     body: VideoUpdateIn,
     user: User = Depends(require_auth),
 ):
-    if user.role not in ('btv', 'admin'):
+    if not user.has_role('btv', 'admin'):
         raise HTTPException(status_code=403, detail="Không có quyền chỉnh sửa video này.")
     video = _get_video_or_404(video_id)
-    if user.role == 'btv' and video.btv_id != user.id:
+    if user.has_role('btv') and not user.has_role('admin') and video.btv_id != user.id:
         raise HTTPException(status_code=403, detail="Bạn không sở hữu video này.")
     for field in ('title', 'notes', 'category', 'thumb_gradient'):
         val = getattr(body, field)
@@ -340,7 +340,7 @@ def update_video(
 
 @router.post("/videos/{video_id}/start-review/", response_model=VideoDetailOut)
 def start_review(request: Request, video_id: int, user: User = Depends(require_auth)):
-    if user.role != 'reviewer':
+    if not user.has_role('reviewer'):
         raise HTTPException(status_code=403, detail="Chỉ Reviewer mới có thể bắt đầu review.")
     video = _get_video_or_404(video_id)
     if video.status != 'pending':
@@ -366,7 +366,7 @@ def request_revision(
     body: RevisionNoteIn,
     user: User = Depends(require_auth),
 ):
-    if user.role != 'reviewer':
+    if not user.has_role('reviewer'):
         raise HTTPException(status_code=403, detail="Chỉ Reviewer mới có thể yêu cầu sửa.")
     video = _get_video_or_404(video_id)
     if video.status not in ('reviewing', 'needs_revision'):
@@ -391,7 +391,7 @@ def request_revision(
 
 @router.post("/videos/{video_id}/send-to-final/", response_model=VideoDetailOut)
 def send_to_final(request: Request, video_id: int, user: User = Depends(require_auth)):
-    if user.role != 'reviewer':
+    if not user.has_role('reviewer'):
         raise HTTPException(status_code=403, detail="Chỉ Reviewer mới có thể chuyển lên Duyệt cuối.")
     video = _get_video_or_404(video_id)
     if video.status not in ('reviewing', 'needs_revision'):
@@ -419,7 +419,7 @@ def send_to_final(request: Request, video_id: int, user: User = Depends(require_
 
 @router.post("/videos/{video_id}/approve/", response_model=VideoDetailOut)
 def approve_video(request: Request, video_id: int, user: User = Depends(require_auth)):
-    if user.role not in ('final', 'admin'):
+    if not user.has_role('final', 'admin'):
         raise HTTPException(status_code=403, detail="Chỉ Duyệt cuối hoặc Admin mới có thể approve.")
     video = _get_video_or_404(video_id)
     if video.status != 'reviewed':
@@ -452,7 +452,7 @@ def reject_video(
     body: RejectReasonIn,
     user: User = Depends(require_auth),
 ):
-    if user.role not in ('final', 'admin'):
+    if not user.has_role('final', 'admin'):
         raise HTTPException(status_code=403, detail="Chỉ Duyệt cuối hoặc Admin mới có thể reject.")
     video = _get_video_or_404(video_id)
     if video.status != 'reviewed':
@@ -476,7 +476,7 @@ def reject_video(
 
 @router.get("/videos/{video_id}/download/")
 def download_video(video_id: int, user: User = Depends(require_auth)):
-    if user.role not in ('admin', 'final'):
+    if not user.has_role('admin', 'final'):
         raise HTTPException(status_code=403, detail="Chỉ Admin hoặc Duyệt cuối mới có thể tải video về máy.")
     video = _get_video_or_404(video_id)
     if video.status != 'approved':
@@ -508,7 +508,7 @@ def reupload_video(
     file: Optional[UploadFile] = File(None),
     user: User = Depends(require_auth),
 ):
-    if user.role != 'btv':
+    if not user.has_role('btv'):
         raise HTTPException(status_code=403, detail="Chỉ BTV mới có thể re-upload.")
     video = _get_video_or_404(video_id)
     if video.btv_id != user.id:
@@ -563,7 +563,7 @@ def list_comments(video_id: int, user: User = Depends(require_auth)):
 
 @router.post("/videos/{video_id}/comments/", response_model=CommentOut)
 def create_comment(video_id: int, body: CommentCreateIn, user: User = Depends(require_auth)):
-    if user.role == 'btv':
+    if user.has_role('btv') and not user.has_role('reviewer', 'final', 'admin'):
         raise HTTPException(status_code=403,
             detail="BTV không thể thêm comment. Vui lòng re-upload để phản hồi.")
     try:
@@ -598,7 +598,7 @@ def create_comment(video_id: int, body: CommentCreateIn, user: User = Depends(re
 
 @router.patch("/comments/{comment_id}/resolve/", response_model=CommentOut)
 def resolve_comment(comment_id: int, user: User = Depends(require_auth)):
-    if user.role not in ('reviewer', 'final', 'admin'):
+    if not user.has_role('reviewer', 'final', 'admin'):
         raise HTTPException(status_code=403,
             detail="Chỉ Reviewer hoặc Duyệt cuối mới có thể resolve comment.")
     try:
@@ -625,7 +625,7 @@ def _recent_audit_data() -> list:
 def dashboard(user: User = Depends(require_auth)):
     all_v = Video.objects.select_related('btv', 'reviewer')
 
-    if user.role == 'btv':
+    if user.has_role('btv') and not user.has_role('reviewer', 'final', 'admin'):
         my = all_v.filter(btv=user)
         data = {
             "role": user.role,
@@ -642,7 +642,7 @@ def dashboard(user: User = Depends(require_auth)):
         }
         return JSONResponse(content=jsonable_encoder(data))
 
-    if user.role == 'reviewer':
+    if user.has_role('reviewer') and not user.has_role('final', 'admin'):
         queue = all_v.filter(status__in=('pending', 'reviewing', 'needs_revision'))
         data = {
             "role": user.role,
@@ -657,7 +657,7 @@ def dashboard(user: User = Depends(require_auth)):
         }
         return JSONResponse(content=jsonable_encoder(data))
 
-    if user.role == 'final':
+    if user.has_role('final') and not user.has_role('admin'):
         waiting = all_v.filter(status='reviewed')
         data = {
             "role": user.role,

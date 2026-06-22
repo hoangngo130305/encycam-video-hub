@@ -41,6 +41,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     initials    = models.CharField('Chữ viết tắt', max_length=3, blank=True)
     avatar_bg   = models.CharField('Màu nền avatar', max_length=20, blank=True, default='#dbeafe')
     avatar_color = models.CharField('Màu chữ avatar', max_length=20, blank=True, default='#1d4ed8')
+    extra_roles = models.CharField('Vai trò bổ sung', max_length=100, blank=True, default='')
     telegram_chat_id = models.CharField('Telegram Chat ID', max_length=30, blank=True)
     locked      = models.BooleanField('Bị khoá', default=False)
     is_active   = models.BooleanField(default=True)
@@ -57,6 +58,24 @@ class User(AbstractBaseUser, PermissionsMixin):
         verbose_name = 'Người dùng'
         verbose_name_plural = 'Người dùng'
         ordering = ['created_at']
+
+    def has_role(self, *roles: str) -> bool:
+        """Trả về True nếu user có bất kỳ role nào trong danh sách (bao gồm extra_roles)."""
+        extras = {r.strip() for r in (self.extra_roles or '').split(',') if r.strip()}
+        all_r = {self.role} | extras
+        return bool(all_r.intersection(set(roles)))
+
+    @property
+    def all_roles(self) -> list:
+        """Danh sách tất cả role (primary + extra), không trùng."""
+        extras = [r.strip() for r in (self.extra_roles or '').split(',') if r.strip()]
+        seen: set = set()
+        result = []
+        for r in [self.role] + extras:
+            if r and r not in seen:
+                seen.add(r)
+                result.append(r)
+        return result
 
     def __str__(self):
         return f'{self.name} <{self.email}>'
@@ -75,7 +94,7 @@ class User(AbstractBaseUser, PermissionsMixin):
             self.avatar_color = color
 
         # Admin role gets is_staff automatically
-        if self.role == 'admin':
+        if self.role == 'admin' or 'admin' in (self.extra_roles or ''):
             self.is_staff = True
 
         super().save(*args, **kwargs)

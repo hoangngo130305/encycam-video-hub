@@ -27,7 +27,7 @@ def _audit(actor: User, action: str, resource_id: int) -> None:
 
 
 def _check_admin(user: User) -> None:
-    if user.role != 'admin':
+    if not user.has_role('admin'):
         raise HTTPException(status_code=403, detail="Chỉ Admin mới có quyền này.")
 
 
@@ -98,7 +98,8 @@ def list_users(
     if search and search.strip():
         qs = qs.filter(Q(name__icontains=search) | Q(email__icontains=search))
     if role and role.strip():
-        qs = qs.filter(role=role)
+        from django.db.models import Q as DQ
+        qs = qs.filter(DQ(role=role) | DQ(extra_roles__contains=role))
     return list(qs)
 
 
@@ -108,18 +109,21 @@ def create_user(body: UserCreateIn, user: User = Depends(require_auth)):
     if User.objects.filter(email__iexact=body.email).exists():
         raise HTTPException(status_code=400, detail="Email đã tồn tại trong hệ thống.")
     bg, color = ROLE_AVATAR_COLORS.get(body.role, ('#dbeafe', '#1d4ed8'))
+    extra = [r for r in (body.extraRoles or []) if r != body.role and r in ('btv', 'reviewer', 'final', 'admin')]
     new_user = User(
         name=body.name,
         email=body.email.strip().lower(),
         role=body.role,
+        extra_roles=','.join(extra),
         initials=_initials(body.name),
         avatar_bg=bg,
         avatar_color=color,
-        is_staff=(body.role == 'admin'),
+        is_staff=(body.role == 'admin' or 'admin' in extra),
     )
     new_user.set_password(body.password)
     new_user.save()
-    _audit(user, f"Thêm user mới: {new_user.name} ({new_user.role})", new_user.id)
+    all_r = ', '.join(new_user.all_roles)
+    _audit(user, f"Thêm user mới: {new_user.name} ({all_r})", new_user.id)
     return new_user
 
 
@@ -152,11 +156,15 @@ def update_user(user_id: int, body: UserUpdateIn, user: User = Depends(require_a
         bg, color = ROLE_AVATAR_COLORS.get(body.role, ('#dbeafe', '#1d4ed8'))
         target.avatar_bg = bg
         target.avatar_color = color
-        target.is_staff = (body.role == 'admin')
+    if body.extraRoles is not None:
+        extra = [r for r in body.extraRoles if r != target.role and r in ('btv', 'reviewer', 'final', 'admin')]
+        target.extra_roles = ','.join(extra)
+    target.is_staff = target.has_role('admin')
     if body.telegramChatId is not None:
         target.telegram_chat_id = body.telegramChatId.strip()
     target.save()
-    _audit(user, f"Cập nhật tài khoản {target.name} — role: {target.role}", target.id)
+    all_r = ', '.join(target.all_roles)
+    _audit(user, f"Cập nhật tài khoản {target.name} — roles: {all_r}", target.id)
     return target
 
 
@@ -180,7 +188,7 @@ def toggle_lock(user_id: int, user: User = Depends(require_auth)):
         target = User.objects.get(pk=user_id)
     except User.DoesNotExist:
         raise HTTPException(status_code=404, detail="Người dùng không tồn tại.")
-    if target.role == 'admin':
+    if target.has_role('admin'):
         raise HTTPException(status_code=400, detail="Không thể khoá tài khoản Admin.")
     if target.pk == user.pk:
         raise HTTPException(status_code=400, detail="Không thể tự khoá tài khoản của mình.")

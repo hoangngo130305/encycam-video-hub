@@ -9,6 +9,7 @@ class UserOut(BaseSchema):
     name: str
     email: str
     role: str
+    allRoles: list[str] = []
     initials: str
     avatarBg: str
     avatarColor: str
@@ -50,6 +51,7 @@ class UserCreateIn(BaseSchema):
     name: str
     email: EmailStr
     role: str = 'btv'
+    extraRoles: Optional[list[str]] = None
     password: str = 'Encycam@2026'
 
 
@@ -57,4 +59,5 @@ class UserUpdateIn(BaseSchema):
     name: Optional[str] = None
     email: Optional[EmailStr] = None
     role: Optional[str] = None
+    extraRoles: Optional[list[str]] = None
     telegramChatId: Optional[str] = None
