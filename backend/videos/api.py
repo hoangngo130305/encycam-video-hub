@@ -232,6 +232,10 @@ def _make_video_detail(request: Request, v: Video) -> VideoDetailOut:
         thumbGradient=v.thumb_gradient,
         category=v.category,
         notes=v.notes,
+        youtubeVideoId=v.youtube_video_id or None,
+        youtubeUrl=v.youtube_url or None,
+        youtubeUploadStatus=v.youtube_upload_status,
+        youtubeUploadProgress=v.youtube_upload_progress,
         versions=[_make_version(request, ver) for ver in v.versions.all()],
         history=[_make_history(h) for h in v.history.all()],
     )
