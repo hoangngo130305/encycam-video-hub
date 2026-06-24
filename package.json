@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "preview": "vite preview"
+    "build:staging": "tsc -b && vite build --mode staging",
+    "preview": "vite preview --port 8091",
+    "preview:staging": "vite preview --port 8081 --mode staging"
   },
   "dependencies": {
     "lucide-react": "^0.460.0",
