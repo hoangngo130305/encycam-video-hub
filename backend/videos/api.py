@@ -13,12 +13,12 @@ from accounts.models import User
 from accounts.schemas import UserOut
 from audit.models import AuditEntry
 from notifications.models import Notification
-from videos.models import Video, VideoVersion, Comment, HistoryEntry, Category, random_gradient
+from videos.models import Video, VideoVersion, Comment, HistoryEntry, Category, SaleProject, random_gradient
 from videos.schemas import (
     VideoListOut, VideoDetailOut, VideoVersionOut,
     CommentOut, HistoryEntryOut,
     CommentCreateIn, RevisionNoteIn, RejectReasonIn,
-    CategoryOut,
+    CategoryOut, SaleProjectOut, SaleVideoListOut, SaleVideoDetailOut,
 )
 from fastapi_auth import require_auth
 import telegram_service as tg
@@ -32,6 +32,7 @@ class CategoryIn(BaseModel):
     name: str
     youtubePlaylistId: str = ''
     youtubeCategoryId: str = '22'
+    forSale: bool = False
 
 
 def _make_category(c: Category) -> CategoryOut:
@@ -40,12 +41,16 @@ def _make_category(c: Category) -> CategoryOut:
         name=c.name,
         youtubePlaylistId=c.youtube_playlist_id,
         youtubeCategoryId=c.youtube_category_id,
+        forSale=c.for_sale,
     )
 
 
 @router.get('/categories/', response_model=list[CategoryOut])
-def list_categories(user: User = Depends(require_auth)):
-    return [_make_category(c) for c in Category.objects.all()]
+def list_categories(for_sale: Optional[bool] = None, user: User = Depends(require_auth)):
+    qs = Category.objects.all()
+    if for_sale is True:
+        qs = qs.filter(for_sale=True)
+    return [_make_category(c) for c in qs]
 
 
 @router.post('/categories/', response_model=CategoryOut, status_code=201)
@@ -60,6 +65,7 @@ def create_category(body: CategoryIn, user: User = Depends(require_auth)):
         name=body.name.strip(),
         youtube_playlist_id=body.youtubePlaylistId.strip(),
         youtube_category_id=body.youtubeCategoryId.strip() or '22',
+        for_sale=body.forSale,
     )
     return _make_category(cat)
 
@@ -79,6 +85,7 @@ def update_category(cat_id: int, body: CategoryIn, user: User = Depends(require_
     cat.name = body.name.strip()
     cat.youtube_playlist_id = body.youtubePlaylistId.strip()
     cat.youtube_category_id = body.youtubeCategoryId.strip() or '22'
+    cat.for_sale = body.forSale
     cat.save()
     return _make_category(cat)
 
@@ -241,7 +248,7 @@ def _make_video_detail(request: Request, v: Video) -> VideoDetailOut:
     )
 
 
-# ── video list / create ───────────────────────────────────────────────────────
+# ── BTV video list / create ───────────────────────────────────────────────────
 
 @router.get("/videos/", response_model=list[VideoListOut])
 def list_videos(
@@ -250,7 +257,8 @@ def list_videos(
     category: Optional[str] = None,
     user: User = Depends(require_auth),
 ):
-    qs = _video_qs()
+    # Chỉ BTV flow — loại trừ sale videos
+    qs = _video_qs().filter(sale_project__isnull=True)
     if user.has_role('btv') and not user.has_role('reviewer', 'final', 'admin'):
         qs = qs.filter(btv=user)
     if status and status.strip():
@@ -309,7 +317,7 @@ def create_video(
     return _make_video_detail(request, _get_video_or_404(video.id))
 
 
-# ── video detail / update ─────────────────────────────────────────────────────
+# ── BTV video detail / update ─────────────────────────────────────────────────
 
 @router.get("/videos/{video_id}/", response_model=VideoDetailOut)
 def get_video(request: Request, video_id: int, user: User = Depends(require_auth)):
@@ -336,7 +344,7 @@ def update_video(
     return _make_video_detail(request, _get_video_or_404(video_id))
 
 
-# ── workflow actions ──────────────────────────────────────────────────────────
+# ── BTV workflow actions ──────────────────────────────────────────────────────
 
 @router.post("/videos/{video_id}/start-review/", response_model=VideoDetailOut)
 def start_review(request: Request, video_id: int, user: User = Depends(require_auth)):
@@ -435,12 +443,11 @@ def approve_video(request: Request, video_id: int, user: User = Depends(require_
     if video.reviewer:
         _notify(video.reviewer, 'approve', 'Video đã duyệt',
                 f'Video "{video.title}" đã được duyệt cuối ✅', video)
-    # Tự động đăng lên YouTube trong background
     try:
         from youtube_service import upload_async
         upload_async(video.id)
     except Exception:
-        pass  # Không block approve nếu YouTube lỗi
+        pass
     tg.notify_approved(video.id, video.title, user.name, video.btv, video.reviewer)
     return _make_video_detail(request, _get_video_or_404(video_id))
 
@@ -476,8 +483,8 @@ def reject_video(
 
 @router.get("/videos/{video_id}/download/")
 def download_video(video_id: int, user: User = Depends(require_auth)):
-    if not user.has_role('admin', 'final'):
-        raise HTTPException(status_code=403, detail="Chỉ Admin hoặc Duyệt cuối mới có thể tải video về máy.")
+    if not user.has_role('admin', 'final', 'sale_manager'):
+        raise HTTPException(status_code=403, detail="Bạn không có quyền tải video về máy.")
     video = _get_video_or_404(video_id)
     if video.status != 'approved':
         raise HTTPException(status_code=403, detail="Chỉ có thể tải video đã được duyệt cuối (Approved).")
@@ -612,6 +619,472 @@ def resolve_comment(comment_id: int, user: User = Depends(require_auth)):
     return _make_comment(comment)
 
 
+# ── Sale Project CRUD ─────────────────────────────────────────────────────────
+
+class SaleProjectIn(BaseModel):
+    name: str
+    categoryId: int
+    saleId: Optional[int] = None
+    saleManagerId: Optional[int] = None  # Admin dùng khi tạo project cho SM khác
+
+
+def _make_sale_project(sp: SaleProject) -> SaleProjectOut:
+    return SaleProjectOut(
+        id=sp.id,
+        name=sp.name,
+        category=_make_category(sp.category),
+        sale=UserOut.model_validate(sp.sale) if sp.sale else None,
+        saleManager=UserOut.model_validate(sp.sale_manager),
+        createdAt=sp.created_at,
+    )
+
+
+@router.get('/sale-projects/', response_model=list[SaleProjectOut])
+def list_sale_projects(user: User = Depends(require_auth)):
+    if not user.has_role('admin', 'sale_manager', 'sale'):
+        raise HTTPException(403, 'Không có quyền xem sale projects.')
+    qs = SaleProject.objects.select_related('category', 'sale', 'sale_manager')
+    if user.has_role('sale') and not user.has_role('admin', 'sale_manager'):
+        qs = qs.filter(sale=user)
+    elif user.has_role('sale_manager') and not user.has_role('admin'):
+        qs = qs.filter(sale_manager=user)
+    return [_make_sale_project(sp) for sp in qs]
+
+
+@router.post('/sale-projects/', response_model=SaleProjectOut, status_code=201)
+def create_sale_project(body: SaleProjectIn, user: User = Depends(require_auth)):
+    if not user.has_role('admin', 'sale_manager'):
+        raise HTTPException(403, 'Chỉ Admin hoặc Sale Manager mới được tạo project.')
+    if not body.name.strip():
+        raise HTTPException(400, 'Tên project không được để trống.')
+    try:
+        category = Category.objects.get(pk=body.categoryId)
+    except Category.DoesNotExist:
+        raise HTTPException(404, 'Danh mục không tồn tại.')
+    if not category.for_sale:
+        raise HTTPException(400, 'Danh mục này không được phép dùng cho Sale project.')
+
+    # Xác định Sale Manager sở hữu project
+    if user.has_role('sale_manager') and not user.has_role('admin'):
+        sm = user
+    else:
+        # Admin tạo: phải chỉ định sale_manager_id
+        if not body.saleManagerId:
+            raise HTTPException(400, 'Admin phải chỉ định saleManagerId khi tạo project.')
+        try:
+            sm = User.objects.get(pk=body.saleManagerId)
+        except User.DoesNotExist:
+            raise HTTPException(404, 'Sale Manager không tồn tại.')
+        if not sm.has_role('sale_manager'):
+            raise HTTPException(400, 'User được chỉ định không phải Sale Manager.')
+
+    # Gán sale nếu có
+    sale_user = None
+    if body.saleId:
+        try:
+            sale_user = User.objects.get(pk=body.saleId)
+        except User.DoesNotExist:
+            raise HTTPException(404, 'Sale user không tồn tại.')
+        if not sale_user.has_role('sale'):
+            raise HTTPException(400, 'User được chỉ định không phải Sale.')
+
+    sp = SaleProject.objects.create(
+        name=body.name.strip(),
+        category=category,
+        sale=sale_user,
+        sale_manager=sm,
+    )
+    AuditEntry.objects.create(
+        user=user,
+        action=f'Tạo sale project "{sp.name}" — SM: {sm.name}',
+        resource_type='video', resource_id=sp.id,
+    )
+    return _make_sale_project(sp)
+
+
+@router.patch('/sale-projects/{project_id}/', response_model=SaleProjectOut)
+def update_sale_project(project_id: int, body: SaleProjectIn, user: User = Depends(require_auth)):
+    if not user.has_role('admin', 'sale_manager'):
+        raise HTTPException(403, 'Không có quyền cập nhật project.')
+    try:
+        sp = SaleProject.objects.select_related('category', 'sale', 'sale_manager').get(pk=project_id)
+    except SaleProject.DoesNotExist:
+        raise HTTPException(404, 'Sale project không tồn tại.')
+    if user.has_role('sale_manager') and not user.has_role('admin'):
+        if sp.sale_manager_id != user.id:
+            raise HTTPException(403, 'Bạn không quản lý project này.')
+
+    if body.name.strip():
+        sp.name = body.name.strip()
+    try:
+        new_category = Category.objects.get(pk=body.categoryId)
+    except Category.DoesNotExist:
+        raise HTTPException(404, 'Danh mục không tồn tại.')
+    if not new_category.for_sale:
+        raise HTTPException(400, 'Danh mục này không được phép dùng cho Sale project.')
+    sp.category = new_category
+
+    if body.saleId is not None:
+        if body.saleId == 0:
+            sp.sale = None
+        else:
+            try:
+                sale_user = User.objects.get(pk=body.saleId)
+            except User.DoesNotExist:
+                raise HTTPException(404, 'Sale user không tồn tại.')
+            if not sale_user.has_role('sale'):
+                raise HTTPException(400, 'User được chỉ định không phải Sale.')
+            sp.sale = sale_user
+
+    sp.save()
+    sp.refresh_from_db()
+    return _make_sale_project(SaleProject.objects.select_related('category', 'sale', 'sale_manager').get(pk=sp.id))
+
+
+@router.delete('/sale-projects/{project_id}/', status_code=204)
+def delete_sale_project(project_id: int, user: User = Depends(require_auth)):
+    if not user.has_role('admin', 'sale_manager'):
+        raise HTTPException(403, 'Không có quyền xoá project.')
+    try:
+        sp = SaleProject.objects.get(pk=project_id)
+    except SaleProject.DoesNotExist:
+        raise HTTPException(404, 'Sale project không tồn tại.')
+    if user.has_role('sale_manager') and not user.has_role('admin'):
+        if sp.sale_manager_id != user.id:
+            raise HTTPException(403, 'Bạn không quản lý project này.')
+    sp.delete()
+
+
+# ── Sale video helpers ────────────────────────────────────────────────────────
+
+def _sale_video_qs():
+    return Video.objects.filter(sale_project__isnull=False).select_related(
+        'btv', 'sale_project', 'sale_project__category',
+        'sale_project__sale_manager', 'sale_project__sale',
+    ).prefetch_related('versions__uploaded_by', 'history__user', 'video_comments__user')
+
+
+def _get_sale_video_or_404(video_id: int) -> Video:
+    try:
+        return _sale_video_qs().get(pk=video_id)
+    except Video.DoesNotExist:
+        raise HTTPException(status_code=404, detail="Video không tồn tại.")
+
+
+def _assert_sm_owns_video(user: User, video: Video) -> None:
+    if user.has_role('admin'):
+        return
+    if video.sale_project.sale_manager_id != user.id:
+        raise HTTPException(403, 'Bạn không quản lý video này.')
+
+
+def _make_sale_video_list(v: Video) -> SaleVideoListOut:
+    return SaleVideoListOut(
+        id=v.id,
+        title=v.title,
+        fileId=v.file_id,
+        status=v.status,
+        currentVersion=v.current_version,
+        uploader=UserOut.model_validate(v.btv),
+        saleProject=_make_sale_project(v.sale_project),
+        uploadedAt=v.uploaded_at,
+        updatedAt=v.updated_at,
+        thumbGradient=v.thumb_gradient,
+        notes=v.notes,
+        youtubeVideoId=v.youtube_video_id or None,
+        youtubeUrl=v.youtube_url or None,
+        youtubeUploadStatus=v.youtube_upload_status,
+        youtubeUploadProgress=v.youtube_upload_progress,
+    )
+
+
+def _make_sale_video_detail(request: Request, v: Video) -> SaleVideoDetailOut:
+    return SaleVideoDetailOut(
+        id=v.id,
+        title=v.title,
+        fileId=v.file_id,
+        status=v.status,
+        currentVersion=v.current_version,
+        uploader=UserOut.model_validate(v.btv),
+        saleProject=_make_sale_project(v.sale_project),
+        uploadedAt=v.uploaded_at,
+        updatedAt=v.updated_at,
+        thumbGradient=v.thumb_gradient,
+        notes=v.notes,
+        youtubeVideoId=v.youtube_video_id or None,
+        youtubeUrl=v.youtube_url or None,
+        youtubeUploadStatus=v.youtube_upload_status,
+        youtubeUploadProgress=v.youtube_upload_progress,
+        versions=[_make_version(request, ver) for ver in v.versions.all()],
+        history=[_make_history(h) for h in v.history.all()],
+    )
+
+
+# ── Sale video list / create ──────────────────────────────────────────────────
+
+@router.get('/sale-videos/', response_model=list[SaleVideoListOut])
+def list_sale_videos(
+    status: Optional[str] = None,
+    search: Optional[str] = None,
+    project_id: Optional[int] = None,
+    user: User = Depends(require_auth),
+):
+    if not user.has_role('admin', 'sale_manager', 'sale'):
+        raise HTTPException(403, 'Không có quyền xem sale videos.')
+    qs = _sale_video_qs()
+    if user.has_role('sale') and not user.has_role('admin', 'sale_manager'):
+        qs = qs.filter(btv=user)
+    elif user.has_role('sale_manager') and not user.has_role('admin'):
+        qs = qs.filter(sale_project__sale_manager=user)
+    if status and status.strip():
+        qs = qs.filter(status=status)
+    if project_id:
+        qs = qs.filter(sale_project_id=project_id)
+    if search and search.strip():
+        qs = qs.filter(
+            Q(title__icontains=search) |
+            Q(file_id__icontains=search) |
+            Q(btv__name__icontains=search)
+        )
+    return [_make_sale_video_list(v) for v in qs]
+
+
+@router.post('/sale-videos/', response_model=SaleVideoDetailOut)
+def create_sale_video(
+    request: Request,
+    title: str = Form(...),
+    project_id: int = Form(...),
+    notes: Optional[str] = Form(None),
+    thumb_gradient: Optional[str] = Form(None),
+    file: Optional[UploadFile] = File(None),
+    user: User = Depends(require_auth),
+):
+    if not user.has_role('sale'):
+        raise HTTPException(403, 'Chỉ Sale mới có thể upload video.')
+    if not file or not file.filename:
+        raise HTTPException(400, 'Vui lòng đính kèm file video (.mp4).')
+    if not file.filename.lower().endswith('.mp4'):
+        raise HTTPException(400, 'Chỉ nhận file .mp4.')
+
+    try:
+        sp = SaleProject.objects.select_related('sale_manager', 'category').get(pk=project_id)
+    except SaleProject.DoesNotExist:
+        raise HTTPException(404, 'Sale project không tồn tại.')
+    if sp.sale_id != user.id:
+        raise HTTPException(403, 'Bạn không được gán vào project này.')
+
+    django_file, size = _wrap_file(file)
+    if size > 4 * 1024 ** 3:
+        raise HTTPException(400, 'File quá lớn (tối đa 4 GB).')
+
+    video = Video.objects.create(
+        title=title,
+        notes=notes or '',
+        category=sp.category.name,
+        thumb_gradient=thumb_gradient or random_gradient(),
+        btv=user,
+        status='pending',
+        current_version=1,
+        sale_project=sp,
+    )
+    VideoVersion.objects.create(
+        video=video, number=1, uploaded_by=user,
+        file=django_file, file_size=_format_size(size),
+    )
+    HistoryEntry.objects.create(video=video, user=user, action='Upload v1', to_status='pending')
+    _audit(user, f'[Sale] Upload mới "{video.title}" → v1 — project: {sp.name}', video)
+    _notify(user, 'upload', 'Upload thành công ✅',
+            f'Video "{video.title}" đã upload thành công và đang chờ Sale Manager duyệt.', video)
+    _notify(sp.sale_manager, 'upload', 'Sale upload video mới',
+            f'{user.name} vừa upload "{video.title}" trong project "{sp.name}".', video)
+    tg.notify_sale_upload(video.id, video.title, user.name, sp.name, sp.sale_manager)
+    video.refresh_from_db()
+    return _make_sale_video_detail(request, _get_sale_video_or_404(video.id))
+
+
+# ── Sale video detail ─────────────────────────────────────────────────────────
+
+@router.get('/sale-videos/{video_id}/', response_model=SaleVideoDetailOut)
+def get_sale_video(request: Request, video_id: int, user: User = Depends(require_auth)):
+    if not user.has_role('admin', 'sale_manager', 'sale'):
+        raise HTTPException(403, 'Không có quyền xem video này.')
+    video = _get_sale_video_or_404(video_id)
+    if user.has_role('sale') and not user.has_role('admin', 'sale_manager'):
+        if video.btv_id != user.id:
+            raise HTTPException(403, 'Bạn không sở hữu video này.')
+    elif user.has_role('sale_manager') and not user.has_role('admin'):
+        if video.sale_project.sale_manager_id != user.id:
+            raise HTTPException(403, 'Bạn không quản lý video này.')
+    return _make_sale_video_detail(request, video)
+
+
+# ── Sale video workflow ───────────────────────────────────────────────────────
+
+@router.post('/sale-videos/{video_id}/start-review/', response_model=SaleVideoDetailOut)
+def sale_start_review(request: Request, video_id: int, user: User = Depends(require_auth)):
+    if not user.has_role('sale_manager', 'admin'):
+        raise HTTPException(403, 'Chỉ Sale Manager mới có thể bắt đầu review.')
+    video = _get_sale_video_or_404(video_id)
+    _assert_sm_owns_video(user, video)
+    if video.status != 'pending':
+        raise HTTPException(400,
+            f'Chỉ có thể review video ở trạng thái "Chờ review" (hiện tại: {video.status}).')
+    old = video.status
+    video.status = 'reviewing'
+    video.save(update_fields=['status', 'updated_at'])
+    HistoryEntry.objects.create(video=video, user=user,
+        action=f'Sale Manager bắt đầu review v{video.current_version}',
+        from_status=old, to_status='reviewing')
+    _audit(user, f'[Sale] Bắt đầu review "{video.title}"', video)
+    _notify(video.btv, 'upload', 'Video đang được xem',
+            f'Sale Manager đang xem video "{video.title}".', video)
+    return _make_sale_video_detail(request, _get_sale_video_or_404(video_id))
+
+
+@router.post('/sale-videos/{video_id}/approve/', response_model=SaleVideoDetailOut)
+def sale_approve(request: Request, video_id: int, user: User = Depends(require_auth)):
+    if not user.has_role('sale_manager', 'admin'):
+        raise HTTPException(403, 'Chỉ Sale Manager mới có thể approve.')
+    video = _get_sale_video_or_404(video_id)
+    _assert_sm_owns_video(user, video)
+    if video.status not in ('pending', 'reviewing'):
+        raise HTTPException(400, f'Không thể approve video ở trạng thái "{video.status}".')
+    old = video.status
+    if old == 'pending':
+        HistoryEntry.objects.create(video=video, user=user,
+            action=f'Sale Manager bắt đầu review v{video.current_version}',
+            from_status='pending', to_status='reviewing')
+    video.status = 'approved'
+    video.save(update_fields=['status', 'updated_at'])
+    HistoryEntry.objects.create(video=video, user=user,
+        action='Sale Manager approve ✅',
+        from_status=old, to_status='approved')
+    _audit(user, f'[Sale] Approve "{video.title}" ✅', video)
+    _notify(video.btv, 'approve', 'Video được duyệt ✅',
+            f'Video "{video.title}" đã được Sale Manager duyệt ✅', video)
+    try:
+        from youtube_service import upload_async
+        upload_async(video.id)
+    except Exception:
+        pass
+    tg.notify_sale_approved(video.id, video.title, user.name, video.btv)
+    return _make_sale_video_detail(request, _get_sale_video_or_404(video_id))
+
+
+@router.post('/sale-videos/{video_id}/reject/', response_model=SaleVideoDetailOut)
+def sale_reject(
+    request: Request,
+    video_id: int,
+    body: RejectReasonIn,
+    user: User = Depends(require_auth),
+):
+    if not user.has_role('sale_manager', 'admin'):
+        raise HTTPException(403, 'Chỉ Sale Manager mới có thể reject.')
+    video = _get_sale_video_or_404(video_id)
+    _assert_sm_owns_video(user, video)
+    if video.status not in ('pending', 'reviewing'):
+        raise HTTPException(400, f'Không thể từ chối video ở trạng thái "{video.status}".')
+    if not body.reason.strip():
+        raise HTTPException(400, 'Lý do từ chối là bắt buộc.')
+    old = video.status
+    if old == 'pending':
+        HistoryEntry.objects.create(video=video, user=user,
+            action=f'Sale Manager bắt đầu review v{video.current_version}',
+            from_status='pending', to_status='reviewing')
+    video.status = 'rejected'
+    video.save(update_fields=['status', 'updated_at'])
+    HistoryEntry.objects.create(video=video, user=user,
+        action=f'Sale Manager từ chối — Lý do: {body.reason}',
+        from_status=old, to_status='rejected')
+    _audit(user, f'[Sale] Reject "{video.title}" — {body.reason}', video)
+    _notify(video.btv, 'reject', 'Video bị từ chối',
+            f'Video "{video.title}" bị từ chối. Lý do: {body.reason}', video)
+    tg.notify_sale_rejected(video.id, video.title, user.name, body.reason, video.btv)
+    return _make_sale_video_detail(request, _get_sale_video_or_404(video_id))
+
+
+@router.post('/sale-videos/{video_id}/revision/', response_model=SaleVideoDetailOut)
+def sale_revision(
+    request: Request,
+    video_id: int,
+    body: RevisionNoteIn,
+    user: User = Depends(require_auth),
+):
+    if not user.has_role('sale_manager', 'admin'):
+        raise HTTPException(403, 'Chỉ Sale Manager mới có thể yêu cầu sửa.')
+    video = _get_sale_video_or_404(video_id)
+    _assert_sm_owns_video(user, video)
+    if video.status not in ('pending', 'reviewing'):
+        raise HTTPException(400, f'Không thể yêu cầu sửa video ở trạng thái "{video.status}".')
+    if not body.note.strip():
+        raise HTTPException(400, 'Vui lòng nhập nội dung yêu cầu sửa.')
+    old = video.status
+    if old == 'pending':
+        HistoryEntry.objects.create(video=video, user=user,
+            action=f'Sale Manager bắt đầu review v{video.current_version}',
+            from_status='pending', to_status='reviewing')
+    video.status = 'needs_revision'
+    video.save(update_fields=['status', 'updated_at'])
+    HistoryEntry.objects.create(video=video, user=user,
+        action=f'Sale Manager yêu cầu sửa — {body.note}',
+        from_status=old, to_status='needs_revision')
+    _audit(user, f'[Sale] Yêu cầu sửa "{video.title}" — {body.note}', video)
+    _notify(video.btv, 'comment', 'Yêu cầu sửa lại',
+            f'Sale Manager yêu cầu sửa "{video.title}": {body.note}', video)
+    tg.notify_sale_revision(video.id, video.title, user.name, body.note, video.btv)
+    return _make_sale_video_detail(request, _get_sale_video_or_404(video_id))
+
+
+@router.post('/sale-videos/{video_id}/reupload/', response_model=SaleVideoDetailOut)
+def sale_reupload(
+    request: Request,
+    video_id: int,
+    notes: Optional[str] = Form(None),
+    file: Optional[UploadFile] = File(None),
+    user: User = Depends(require_auth),
+):
+    if not user.has_role('sale'):
+        raise HTTPException(403, 'Chỉ Sale mới có thể re-upload.')
+    video = _get_sale_video_or_404(video_id)
+    if video.btv_id != user.id:
+        raise HTTPException(403, 'Bạn không sở hữu video này.')
+    if video.status != 'needs_revision':
+        raise HTTPException(400, 'Chỉ có thể re-upload khi video ở trạng thái "Cần sửa".')
+    if not file or not file.filename:
+        raise HTTPException(400, 'Vui lòng đính kèm file video (.mp4).')
+    if not file.filename.lower().endswith('.mp4'):
+        raise HTTPException(400, 'Chỉ nhận file .mp4.')
+
+    django_file, size = _wrap_file(file)
+    if size > 4 * 1024 ** 3:
+        raise HTTPException(400, 'File quá lớn (tối đa 4 GB).')
+
+    old = video.status
+    new_ver = video.current_version + 1
+    VideoVersion.objects.create(
+        video=video, number=new_ver, uploaded_by=user,
+        file=django_file, file_size=_format_size(size),
+    )
+    video.current_version = new_ver
+    video.status = 'pending'
+    update_fields = ['current_version', 'status', 'updated_at']
+    if notes is not None:
+        video.notes = notes
+        update_fields.append('notes')
+    video.save(update_fields=update_fields)
+    HistoryEntry.objects.create(video=video, user=user,
+        action=f'Sale re-upload v{new_ver}',
+        from_status=old, to_status='pending')
+    _audit(user, f'[Sale] Re-upload "{video.title}" → v{new_ver}', video)
+    _notify(user, 'upload', f'Re-upload v{new_ver} thành công ✅',
+            f'Video "{video.title}" đã re-upload (v{new_ver}) và đang chờ Sale Manager duyệt.', video)
+    sm = video.sale_project.sale_manager
+    _notify(sm, 'upload', 'Sale đã re-upload',
+            f'{user.name} đã re-upload "{video.title}" → v{new_ver}', video)
+    tg.notify_sale_upload(video.id, video.title, user.name, video.sale_project.name, sm)
+    return _make_sale_video_detail(request, _get_sale_video_or_404(video_id))
+
+
 # ── dashboard ─────────────────────────────────────────────────────────────────
 
 def _recent_audit_data() -> list:
@@ -623,7 +1096,48 @@ def _recent_audit_data() -> list:
 
 @router.get("/dashboard/")
 def dashboard(user: User = Depends(require_auth)):
-    all_v = Video.objects.select_related('btv', 'reviewer')
+    # BTV flow videos (không có sale_project)
+    all_v = Video.objects.select_related('btv', 'reviewer').filter(sale_project__isnull=True)
+
+    if user.has_role('sale') and not user.has_role('admin', 'sale_manager'):
+        my = Video.objects.filter(btv=user, sale_project__isnull=False)
+        data = {
+            "role": user.role,
+            "stats": {
+                "total": my.count(),
+                "pending": my.filter(status='pending').count(),
+                "reviewing": my.filter(status='reviewing').count(),
+                "needsRevision": my.filter(status='needs_revision').count(),
+                "approved": my.filter(status='approved').count(),
+                "rejected": my.filter(status='rejected').count(),
+            },
+            "recentVideos": [_make_sale_video_list(v).model_dump() for v in
+                _sale_video_qs().filter(btv=user).order_by('-updated_at')[:5]],
+            "recentActivity": _recent_audit_data(),
+        }
+        return JSONResponse(content=jsonable_encoder(data))
+
+    if user.has_role('sale_manager') and not user.has_role('admin'):
+        my_v = Video.objects.filter(
+            sale_project__isnull=False, sale_project__sale_manager=user
+        )
+        queue = _sale_video_qs().filter(
+            sale_project__sale_manager=user, status='pending'
+        )
+        data = {
+            "role": user.role,
+            "stats": {
+                "total": my_v.count(),
+                "pending": my_v.filter(status='pending').count(),
+                "reviewing": my_v.filter(status='reviewing').count(),
+                "needsRevision": my_v.filter(status='needs_revision').count(),
+                "approved": my_v.filter(status='approved').count(),
+                "rejected": my_v.filter(status='rejected').count(),
+            },
+            "queue": [_make_sale_video_list(v).model_dump() for v in queue.order_by('-uploaded_at')[:5]],
+            "recentActivity": _recent_audit_data(),
+        }
+        return JSONResponse(content=jsonable_encoder(data))
 
     if user.has_role('btv') and not user.has_role('reviewer', 'final', 'admin'):
         my = all_v.filter(btv=user)
@@ -671,31 +1185,37 @@ def dashboard(user: User = Depends(require_auth)):
         }
         return JSONResponse(content=jsonable_encoder(data))
 
-    # admin
+    # Admin — thấy cả 2 flow
+    all_sale_v = Video.objects.filter(sale_project__isnull=False)
     users_qs = User.objects.all()
     data = {
         "role": user.role,
         "stats": {
-            "totalVideos": all_v.count(),
-            "pending": all_v.filter(status='pending').count(),
-            "reviewing": all_v.filter(status='reviewing').count(),
-            "reviewed": all_v.filter(status='reviewed').count(),
-            "approved": all_v.filter(status='approved').count(),
-            "rejected": all_v.filter(status='rejected').count(),
-            "needsRevision": all_v.filter(status='needs_revision').count(),
+            "totalVideos": Video.objects.count(),
+            "btvFlow": {
+                "total": all_v.count(),
+                "pending": all_v.filter(status='pending').count(),
+                "reviewing": all_v.filter(status='reviewing').count(),
+                "reviewed": all_v.filter(status='reviewed').count(),
+                "approved": all_v.filter(status='approved').count(),
+                "rejected": all_v.filter(status='rejected').count(),
+                "needsRevision": all_v.filter(status='needs_revision').count(),
+            },
+            "saleFlow": {
+                "total": all_sale_v.count(),
+                "pending": all_sale_v.filter(status='pending').count(),
+                "reviewing": all_sale_v.filter(status='reviewing').count(),
+                "approved": all_sale_v.filter(status='approved').count(),
+                "rejected": all_sale_v.filter(status='rejected').count(),
+                "needsRevision": all_sale_v.filter(status='needs_revision').count(),
+            },
             "activeUsers": users_qs.filter(locked=False).count(),
             "lockedUsers": users_qs.filter(locked=True).count(),
             "totalUsers": users_qs.count(),
         },
-        "statusDistribution": {
-            "pending": all_v.filter(status='pending').count(),
-            "reviewing": all_v.filter(status='reviewing').count(),
-            "reviewed": all_v.filter(status='reviewed').count(),
-            "approved": all_v.filter(status='approved').count(),
-            "rejected": all_v.filter(status='rejected').count(),
-            "needsRevision": all_v.filter(status='needs_revision').count(),
-        },
-        "recentVideos": [_make_video_list(v).model_dump() for v in all_v.order_by('-updated_at')[:6]],
+        "recentVideos": [_make_video_list(v).model_dump() for v in
+            Video.objects.filter(sale_project__isnull=True).select_related('btv', 'reviewer')
+            .order_by('-updated_at')[:6]],
         "recentActivity": _recent_audit_data(),
     }
     return JSONResponse(content=jsonable_encoder(data))

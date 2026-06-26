@@ -74,10 +74,12 @@ export const ROLE_CONFIG: Record<Role, {
   color: string;
   bg: string;
 }> = {
-  admin: { label: 'Admin', color: 'text-violet-700 dark:text-violet-400', bg: 'bg-violet-50 dark:bg-violet-950/40 border border-violet-200 dark:border-violet-800' },
-  btv: { label: 'BTV', color: 'text-blue-700 dark:text-blue-400', bg: 'bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800' },
-  reviewer: { label: 'Reviewer', color: 'text-green-700 dark:text-green-400', bg: 'bg-green-50 dark:bg-green-950/40 border border-green-200 dark:border-green-800' },
-  final: { label: 'Duyệt cuối', color: 'text-orange-700 dark:text-orange-400', bg: 'bg-orange-50 dark:bg-orange-950/40 border border-orange-200 dark:border-orange-800' },
+  admin:        { label: 'Admin',        color: 'text-violet-700 dark:text-violet-400', bg: 'bg-violet-50 dark:bg-violet-950/40 border border-violet-200 dark:border-violet-800' },
+  btv:          { label: 'BTV',          color: 'text-blue-700 dark:text-blue-400',   bg: 'bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800' },
+  reviewer:     { label: 'Reviewer',     color: 'text-green-700 dark:text-green-400', bg: 'bg-green-50 dark:bg-green-950/40 border border-green-200 dark:border-green-800' },
+  final:        { label: 'Duyệt cuối',   color: 'text-orange-700 dark:text-orange-400', bg: 'bg-orange-50 dark:bg-orange-950/40 border border-orange-200 dark:border-orange-800' },
+  sale_manager: { label: 'Sale Manager', color: 'text-yellow-700 dark:text-yellow-400', bg: 'bg-yellow-50 dark:bg-yellow-950/40 border border-yellow-200 dark:border-yellow-800' },
+  sale:         { label: 'Sale',         color: 'text-pink-700 dark:text-pink-400',   bg: 'bg-pink-50 dark:bg-pink-950/40 border border-pink-200 dark:border-pink-800' },
 };
 
 export const WORKFLOW_STEPS: { status: VideoStatus; label: string }[] = [

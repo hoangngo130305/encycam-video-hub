@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Search, Video, Upload, Eye, ChevronRight } from 'lucide-react';
 import { useAppStore } from '../store/appStore';
 import { videoService } from '../services/videoService';
+import { categoryService } from '../services/categoryService';
 import TopBar from '../components/layout/TopBar';
 import { VideoFilterBar } from '../components/VideoFilterBar';
 import { StatusBadge, Avatar, Button, Card, EmptyState } from '../components/ui';
@@ -33,6 +34,7 @@ export default function VideoListPage() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>(searchParams.get('status') ?? 'all');
   const [categoryFilter, setCategoryFilter] = useState<string>('');
+  const [categories, setCategories] = useState<string[]>([]);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const [loading, setLoading] = useState(true);
 
@@ -45,10 +47,13 @@ export default function VideoListPage() {
   useEffect(() => {
     if (!currentUser) return;
     setLoading(true);
-    videoService.list()
-      .then(videos => setVideos(videos))
-      .catch(() => {})
-      .finally(() => setLoading(false));
+    Promise.all([
+      videoService.list(),
+      categoryService.list(),
+    ]).then(([vids, cats]) => {
+      setVideos(vids);
+      setCategories(cats.map(c => c.name));
+    }).catch(() => {}).finally(() => setLoading(false));
   }, [currentUser, setVideos]);
 
   if (!currentUser) return null;
@@ -108,7 +113,7 @@ export default function VideoListPage() {
               className="px-3 py-2 text-sm bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg text-gray-700 dark:text-gray-300 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 cursor-pointer"
             >
               <option value="">Tất cả danh mục</option>
-              {['ENCY CAM', 'ENCY ROBOT', 'KHÁCH HÀNG TIÊU BIỂU'].map(c => (
+              {categories.map(c => (
                 <option key={c} value={c}>{c}</option>
               ))}
             </select>

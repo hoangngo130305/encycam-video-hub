@@ -1,7 +1,8 @@
 import { NavLink, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Video, Upload, Bell, Users, FileText, AlertTriangle,
-  ListChecks, Gavel, ChevronLeft, ChevronRight, LogOut, Tag, X
+  ListChecks, Gavel, ChevronLeft, ChevronRight, LogOut, Tag, X,
+  FolderOpen, UserCheck,
 } from 'lucide-react';
 import { useAppStore } from '../../store/appStore';
 import { Avatar, RoleBadge } from '../ui';
@@ -17,6 +18,27 @@ interface NavItem {
 
 function getNavItems(allRoles: Role[], unread: number): NavItem[] {
   const has = (...roles: Role[]) => roles.some(r => allRoles.includes(r));
+
+  // Sale Manager nav
+  if (has('sale_manager') && !has('admin')) {
+    return [
+      { to: '/dashboard',              icon: LayoutDashboard, label: 'Dashboard' },
+      { to: '/sale-videos',            icon: Video,           label: 'Video Sale' },
+      { to: '/sale-manager/projects',  icon: FolderOpen,      label: 'Projects' },
+      { to: '/sale-manager/users',     icon: UserCheck,       label: 'Tài khoản Sale' },
+      { to: '/notifications',          icon: Bell,            label: 'Thông báo', badge: unread },
+    ];
+  }
+
+  // Sale nav
+  if (has('sale') && !has('admin')) {
+    return [
+      { to: '/dashboard',   icon: LayoutDashboard, label: 'Dashboard' },
+      { to: '/sale-videos', icon: Video,           label: 'Video của tôi' },
+      { to: '/sale/upload', icon: Upload,          label: 'Upload video' },
+      { to: '/notifications', icon: Bell,          label: 'Thông báo', badge: unread },
+    ];
+  }
 
   const dashboardLabels: Partial<Record<Role, { icon: React.ElementType; label: string }>> = {
     admin:    { icon: LayoutDashboard, label: 'Tổng quan' },
@@ -42,10 +64,13 @@ function getNavItems(allRoles: Role[], unread: number): NavItem[] {
 
   if (has('admin')) {
     items.push(
-      { to: '/admin/users',      icon: Users,    label: 'Quản lý user' },
-      { to: '/admin/categories', icon: Tag,       label: 'Danh mục' },
-      { to: '/admin/audit',      icon: FileText,  label: 'Audit log' },
-      { to: '/notifications',    icon: AlertTriangle, label: 'Cảnh báo', badge: unread },
+      { to: '/sale-videos',           icon: Video,         label: 'Video Sale' },
+      { to: '/sale-manager/projects', icon: FolderOpen,    label: 'Sale Projects' },
+      { to: '/sale-manager/users',    icon: UserCheck,     label: 'Sale accounts' },
+      { to: '/admin/users',           icon: Users,         label: 'Quản lý user' },
+      { to: '/admin/categories',      icon: Tag,           label: 'Danh mục' },
+      { to: '/admin/audit',           icon: FileText,      label: 'Audit log' },
+      { to: '/notifications',         icon: AlertTriangle, label: 'Cảnh báo', badge: unread },
     );
   } else {
     items.push({ to: '/notifications', icon: Bell, label: 'Thông báo', badge: unread });
@@ -55,10 +80,12 @@ function getNavItems(allRoles: Role[], unread: number): NavItem[] {
 }
 
 const ROLE_ACCENT: Record<Role, string> = {
-  btv: 'bg-blue-600',
-  reviewer: 'bg-violet-600',
-  final: 'bg-orange-500',
-  admin: 'bg-violet-700',
+  btv:          'bg-blue-600',
+  reviewer:     'bg-violet-600',
+  final:        'bg-orange-500',
+  admin:        'bg-violet-700',
+  sale_manager: 'bg-yellow-500',
+  sale:         'bg-pink-500',
 };
 
 interface SidebarProps {

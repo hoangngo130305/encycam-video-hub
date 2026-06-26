@@ -28,14 +28,18 @@ class Command(BaseCommand):
 
         self.stdout.write('🌱 Seeding users…')
         users_data = [
-            {'email': 'admin@encycam.vn',  'name': 'Admin System', 'role': 'admin',    'initials': 'AD', 'avatar_bg': '#f3e8ff', 'avatar_color': '#7c3aed', 'locked': False},
-            {'email': 'hminh@encycam.vn',  'name': 'Hoàng Minh',   'role': 'btv',      'initials': 'HM', 'avatar_bg': '#dbeafe', 'avatar_color': '#1d4ed8', 'locked': False},
-            {'email': 'tphu@encycam.vn',   'name': 'Trần Phú',     'role': 'btv',      'initials': 'TP', 'avatar_bg': '#dcfce7', 'avatar_color': '#15803d', 'locked': False},
-            {'email': 'ltuan@encycam.vn',  'name': 'Lê Tuấn',      'role': 'btv',      'initials': 'LT', 'avatar_bg': '#fce7f3', 'avatar_color': '#be185d', 'locked': True},
-            {'email': 'nthao@encycam.vn',  'name': 'Nguyễn Thảo',  'role': 'reviewer', 'initials': 'NT', 'avatar_bg': '#dcfce7', 'avatar_color': '#16a34a', 'locked': False},
-            {'email': 'plong@encycam.vn',  'name': 'Phạm Long',    'role': 'final',    'initials': 'PL', 'avatar_bg': '#ffedd5', 'avatar_color': '#ea580c', 'locked': False},
-            {'email': 'mhuong@encycam.vn', 'name': 'Mai Hương',    'role': 'reviewer', 'initials': 'MH', 'avatar_bg': '#ede9fe', 'avatar_color': '#7c3aed', 'locked': False},
-            {'email': 'bkhoa@encycam.vn',  'name': 'Bùi Khoa',     'role': 'btv',      'initials': 'BK', 'avatar_bg': '#fef9c3', 'avatar_color': '#a16207', 'locked': False},
+            {'email': 'admin@encycam.vn',  'name': 'Admin System', 'role': 'admin',        'initials': 'AD', 'avatar_bg': '#f3e8ff', 'avatar_color': '#7c3aed', 'locked': False, 'password': 'encycam2026'},
+            {'email': 'hminh@encycam.vn',  'name': 'Hoàng Minh',   'role': 'btv',          'initials': 'HM', 'avatar_bg': '#dbeafe', 'avatar_color': '#1d4ed8', 'locked': False, 'password': 'encycam2026'},
+            {'email': 'tphu@encycam.vn',   'name': 'Trần Phú',     'role': 'btv',          'initials': 'TP', 'avatar_bg': '#dcfce7', 'avatar_color': '#15803d', 'locked': False, 'password': 'encycam2026'},
+            {'email': 'ltuan@encycam.vn',  'name': 'Lê Tuấn',      'role': 'btv',          'initials': 'LT', 'avatar_bg': '#fce7f3', 'avatar_color': '#be185d', 'locked': True,  'password': 'encycam2026'},
+            {'email': 'nthao@encycam.vn',  'name': 'Nguyễn Thảo',  'role': 'reviewer',     'initials': 'NT', 'avatar_bg': '#dcfce7', 'avatar_color': '#16a34a', 'locked': False, 'password': 'encycam2026'},
+            {'email': 'plong@encycam.vn',  'name': 'Phạm Long',    'role': 'final',        'initials': 'PL', 'avatar_bg': '#ffedd5', 'avatar_color': '#ea580c', 'locked': False, 'password': 'encycam2026'},
+            {'email': 'mhuong@encycam.vn', 'name': 'Mai Hương',    'role': 'reviewer',     'initials': 'MH', 'avatar_bg': '#ede9fe', 'avatar_color': '#7c3aed', 'locked': False, 'password': 'encycam2026'},
+            {'email': 'bkhoa@encycam.vn',  'name': 'Bùi Khoa',     'role': 'btv',          'initials': 'BK', 'avatar_bg': '#fef9c3', 'avatar_color': '#a16207', 'locked': False, 'password': 'encycam2026'},
+            {'email': 'gf@encycam.vn',     'name': 'gf',            'role': 'sale_manager', 'initials': 'GF', 'avatar_bg': '#fef9c3', 'avatar_color': '#a16207', 'locked': False, 'password': 'encycam2026'},
+            {'email': 'sale1@encycam.vn',  'name': 'Nguyễn Sale A', 'role': 'sale',         'initials': 'SA', 'avatar_bg': '#fce7f3', 'avatar_color': '#be185d', 'locked': False, 'password': 'encycam2026'},
+            {'email': 'sale2@encycam.vn',  'name': 'Trần Sale B',    'role': 'sale',         'initials': 'SB', 'avatar_bg': '#fce7f3', 'avatar_color': '#be185d', 'locked': False, 'password': 'encycam2026'},
+            {'email': 'sale3@encycam.vn',  'name': 'Lê Sale C',      'role': 'sale',         'initials': 'SC', 'avatar_bg': '#fce7f3', 'avatar_color': '#be185d', 'locked': False, 'password': 'encycam2026'},
         ]
 
         u = {}
@@ -54,7 +58,7 @@ class Command(BaseCommand):
                 },
             )
             if created:
-                obj.set_password('encycam2026')
+                obj.set_password(d.get('password', 'encycam2026'))
                 obj.save()
                 self.stdout.write(f'  ✅ Created user: {obj.name}')
             else:
@@ -333,7 +337,8 @@ class Command(BaseCommand):
             )
             AuditEntry.objects.filter(pk=entry.pk).update(timestamp=d['at'])
 
-        self.stdout.write(self.style.SUCCESS('\n✅ Seed hoàn thành! Tài khoản mặc định: password = encycam2026'))
+        self.stdout.write(self.style.SUCCESS('\n✅ Seed hoàn thành!'))
         self.stdout.write('   Demo accounts:')
         for ud in users_data:
-            self.stdout.write(f'   {ud["email"]:30s}  [{ud["role"]:8s}]  {"🔒 LOCKED" if ud["locked"] else ""}')
+            pwd = ud.get('password', 'encycam2026')
+            self.stdout.write(f'   {ud["email"]:30s}  [{ud["role"]:12s}]  pass={pwd}  {"🔒 LOCKED" if ud["locked"] else ""}')

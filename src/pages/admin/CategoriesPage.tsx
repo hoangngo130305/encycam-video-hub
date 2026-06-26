@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Plus, Pencil, Trash2, Tag, Youtube, ExternalLink } from 'lucide-react';
+import { Plus, Pencil, Trash2, Tag, Youtube, ExternalLink, ShoppingBag } from 'lucide-react';
 import { useAppStore } from '../../store/appStore';
 import { categoryService } from '../../services/categoryService';
 import TopBar from '../../components/layout/TopBar';
@@ -37,7 +37,7 @@ function extractPlaylistId(input: string): string {
   return trimmed;
 }
 
-const EMPTY = { name: '', youtubePlaylistId: '', youtubeCategoryId: '22' };
+const EMPTY = { name: '', youtubePlaylistId: '', youtubeCategoryId: '22', forSale: false };
 
 export default function CategoriesPage() {
   const { showToast } = useAppStore();
@@ -66,6 +66,7 @@ export default function CategoriesPage() {
       name: cat.name,
       youtubePlaylistId: cat.youtubePlaylistId,
       youtubeCategoryId: cat.youtubeCategoryId,
+      forSale: cat.forSale,
     });
     setErrors({});
     setEditTarget(cat);
@@ -86,6 +87,7 @@ export default function CategoriesPage() {
         name: form.name.trim(),
         youtubePlaylistId: extractPlaylistId(form.youtubePlaylistId),
         youtubeCategoryId: form.youtubeCategoryId,
+        forSale: form.forSale,
       });
       setCategories(prev => [...prev, cat].sort((a, b) => a.name.localeCompare(b.name)));
       showToast(`Đã tạo danh mục "${cat.name}"`, 'success');
@@ -105,6 +107,7 @@ export default function CategoriesPage() {
         name: form.name.trim(),
         youtubePlaylistId: extractPlaylistId(form.youtubePlaylistId),
         youtubeCategoryId: form.youtubeCategoryId,
+        forSale: form.forSale,
       });
       setCategories(prev =>
         prev.map(c => c.id === updated.id ? updated : c)
@@ -174,6 +177,22 @@ export default function CategoriesPage() {
           ))}
         </select>
       </div>
+
+      <label className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 dark:border-gray-700 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
+        <input
+          type="checkbox"
+          checked={form.forSale}
+          onChange={e => setForm(f => ({ ...f, forSale: e.target.checked }))}
+          className="w-4 h-4 rounded accent-yellow-500"
+        />
+        <div>
+          <div className="text-sm font-semibold text-gray-800 dark:text-gray-200 flex items-center gap-1.5">
+            <ShoppingBag size={13} className="text-yellow-500" />
+            Dùng cho Sale flow
+          </div>
+          <div className="text-[11px] text-gray-400">Sale Manager chỉ được chọn danh mục có bật tuỳ chọn này</div>
+        </div>
+      </label>
     </div>
   );
 
@@ -217,7 +236,15 @@ export default function CategoriesPage() {
                     <Tag size={14} className="text-indigo-500" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="font-semibold text-sm text-gray-900 dark:text-gray-100">{cat.name}</div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold text-sm text-gray-900 dark:text-gray-100">{cat.name}</span>
+                      {cat.forSale && (
+                        <span className="inline-flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded bg-yellow-100 dark:bg-yellow-950/40 text-yellow-700 dark:text-yellow-400">
+                          <ShoppingBag size={9} />
+                          Sale
+                        </span>
+                      )}
+                    </div>
                     <div className="flex items-center gap-3 mt-0.5 flex-wrap">
                       <span className="text-[11px] text-gray-400">
                         YT: {ytCategoryLabel(cat.youtubeCategoryId)}

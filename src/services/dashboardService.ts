@@ -19,6 +19,8 @@ export interface DashboardStats {
   activeUsers?: number;
   lockedUsers?: number;
   totalUsers?: number;
+  // Sale Manager
+  pendingReview?: number;
 }
 
 export interface DashboardData {

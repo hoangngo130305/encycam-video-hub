@@ -7,57 +7,97 @@ import { Avatar, Button, Card, RoleBadge, Modal, Input } from '../../components/
 import { cn } from '../../lib/utils';
 import type { Role } from '../../types';
 
-const ALL_ROLES: { value: Role; label: string; desc: string; trackOn: string }[] = [
-  { value: 'btv',      label: 'BTV',        desc: 'Upload & re-upload video',        trackOn: 'bg-blue-500'   },
-  { value: 'reviewer', label: 'Reviewer',   desc: 'Review, comment, yêu cầu sửa',   trackOn: 'bg-green-500'  },
-  { value: 'final',    label: 'Duyệt cuối', desc: 'Approve / Reject, tải về máy',   trackOn: 'bg-orange-500' },
-  { value: 'admin',    label: 'Admin',      desc: 'Toàn quyền hệ thống',            trackOn: 'bg-violet-600' },
+const BTV_TRACK: { value: Role; label: string; desc: string; trackOn: string }[] = [
+  { value: 'btv',      label: 'BTV',        desc: 'Upload & re-upload video',                   trackOn: 'bg-blue-500'   },
+  { value: 'reviewer', label: 'Reviewer',   desc: 'Review, comment, yêu cầu sửa',              trackOn: 'bg-green-500'  },
+  { value: 'final',    label: 'Duyệt cuối', desc: 'Approve / Reject, tải về máy',              trackOn: 'bg-orange-500' },
+  { value: 'admin',    label: 'Admin',      desc: 'Toàn quyền hệ thống',                       trackOn: 'bg-violet-600' },
 ];
 
-const ROLE_PRIORITY: Role[] = ['admin', 'final', 'reviewer', 'btv'];
+const SALE_TRACK: { value: Role; label: string; desc: string; trackOn: string }[] = [
+  { value: 'sale_manager', label: 'Sale Manager', desc: 'Quản lý project, review & duyệt sale video', trackOn: 'bg-yellow-500' },
+  { value: 'sale',         label: 'Sale',         desc: 'Upload video khách hàng tiêu biểu',          trackOn: 'bg-pink-500'   },
+];
+
+const BTV_ROLES  = BTV_TRACK.map(r => r.value);
+const SALE_ROLES = SALE_TRACK.map(r => r.value);
+
+const ROLE_PRIORITY: Role[] = ['admin', 'sale_manager', 'sale', 'final', 'reviewer', 'btv'];
 
 function getPrimaryRole(selected: Role[]): Role {
   return ROLE_PRIORITY.find(r => selected.includes(r)) ?? 'btv';
 }
 
 function RoleToggles({ selected, onChange }: { selected: Role[]; onChange: (roles: Role[]) => void }) {
+  const hasBtv  = selected.some(r => BTV_ROLES.includes(r as Role));
+  const hasSale = selected.some(r => SALE_ROLES.includes(r as Role));
+
   const toggle = (role: Role) => {
+    const isSaleRole = SALE_ROLES.includes(role);
+    const isBtvRole  = BTV_ROLES.includes(role);
+
     if (selected.includes(role)) {
+      // Không cho bỏ role cuối cùng
       if (selected.length === 1) return;
       onChange(selected.filter(r => r !== role));
     } else {
-      onChange([...selected, role]);
+      // Khi thêm sale role → xoá hết btv/reviewer/final (nhưng giữ admin nếu có)
+      if (isSaleRole && hasBtv) {
+        const keepAdmin = selected.includes('admin') ? ['admin' as Role] : [];
+        onChange([...keepAdmin, role]);
+      }
+      // Khi thêm btv/reviewer/final → xoá hết sale roles
+      else if (isBtvRole && role !== 'admin' && hasSale) {
+        onChange(selected.filter(r => !SALE_ROLES.includes(r as Role)).concat(role));
+      }
+      else {
+        onChange([...selected, role]);
+      }
     }
   };
 
-  return (
+  const renderGroup = (
+    group: typeof BTV_TRACK,
+    label: string,
+    blocked: boolean,
+  ) => (
     <div>
-      <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-2">Phân quyền (có thể bật nhiều)</p>
-      <div className="flex flex-col gap-2">
-        {ALL_ROLES.map(r => {
-          const active = selected.includes(r.value);
+      <p className={cn('text-[11px] font-bold uppercase tracking-wide mb-1.5',
+        blocked ? 'text-gray-300 dark:text-gray-700' : 'text-gray-500 dark:text-gray-400')}>
+        {label}
+        {blocked && <span className="ml-1 font-normal normal-case">(không tương thích với vai trò đang chọn)</span>}
+      </p>
+      <div className="flex flex-col gap-1.5">
+        {group.map(r => {
+          const active    = selected.includes(r.value);
           const isPrimary = getPrimaryRole(selected) === r.value;
+          const disabled  = blocked && !active;
           return (
             <button
               key={r.value}
               type="button"
-              onClick={() => toggle(r.value)}
-              className="flex items-center gap-3 px-3 py-2.5 rounded-xl border border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors text-left w-full"
+              disabled={disabled}
+              onClick={() => !disabled && toggle(r.value)}
+              className={cn(
+                'flex items-center gap-3 px-3 py-2.5 rounded-xl border transition-colors text-left w-full',
+                disabled
+                  ? 'opacity-35 cursor-not-allowed border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/30'
+                  : 'border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50 hover:bg-gray-100 dark:hover:bg-gray-800 cursor-pointer',
+              )}
             >
-              {/* Toggle switch */}
               <div className={cn(
                 'relative flex-shrink-0 w-10 h-5 rounded-full transition-colors duration-200',
-                active ? r.trackOn : 'bg-gray-200 dark:bg-gray-700'
+                active ? r.trackOn : 'bg-gray-200 dark:bg-gray-700',
               )}>
                 <span className={cn(
                   'absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform duration-200',
-                  active ? 'translate-x-5' : 'translate-x-0.5'
+                  active ? 'translate-x-5' : 'translate-x-0.5',
                 )} />
               </div>
-              {/* Label */}
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <span className={cn('text-sm font-semibold', active ? 'text-gray-900 dark:text-gray-100' : 'text-gray-500 dark:text-gray-400')}>
+                  <span className={cn('text-sm font-semibold',
+                    active ? 'text-gray-900 dark:text-gray-100' : 'text-gray-500 dark:text-gray-400')}>
                     {r.label}
                   </span>
                   {active && isPrimary && (
@@ -71,6 +111,17 @@ function RoleToggles({ selected, onChange }: { selected: Role[]; onChange: (role
             </button>
           );
         })}
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="space-y-3">
+      <p className="text-xs font-semibold text-gray-700 dark:text-gray-300">Phân quyền</p>
+      <div className="p-3 rounded-xl border border-gray-100 dark:border-gray-800 space-y-3">
+        {renderGroup(BTV_TRACK,  'BTV Flow',  hasSale && !selected.includes('admin'))}
+        <div className="border-t border-dashed border-gray-200 dark:border-gray-700" />
+        {renderGroup(SALE_TRACK, 'Sale Flow', hasBtv && !selected.includes('admin'))}
       </div>
     </div>
   );

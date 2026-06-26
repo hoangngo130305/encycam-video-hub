@@ -1,10 +1,11 @@
-export type Role = 'admin' | 'btv' | 'reviewer' | 'final';
+export type Role = 'admin' | 'btv' | 'reviewer' | 'final' | 'sale_manager' | 'sale';
 
 export interface Category {
   id: number;
   name: string;
   youtubePlaylistId: string;
   youtubeCategoryId: string;
+  forSale: boolean;
 }
 
 export type VideoStatus =
@@ -94,6 +95,35 @@ export interface Notification {
   videoId?: number;
   videoTitle?: string;
   forRoles?: Role[];
+}
+
+export interface SaleProject {
+  id: number;
+  name: string;
+  category: Category;
+  sale: User | null;
+  saleManager: User;
+  createdAt: string;
+}
+
+export interface SaleVideo {
+  id: number;
+  title: string;
+  fileId: string;
+  status: VideoStatus;
+  currentVersion: number;
+  uploader: User;
+  saleProject: SaleProject;
+  uploadedAt: string;
+  updatedAt: string;
+  thumbGradient: string;
+  notes: string;
+  youtubeVideoId?: string | null;
+  youtubeUrl?: string | null;
+  youtubeUploadStatus?: 'idle' | 'uploading' | 'done' | 'failed';
+  youtubeUploadProgress?: number;
+  versions?: VideoVersion[];
+  history?: HistoryEntry[];
 }
 
 export interface AuditEntry {

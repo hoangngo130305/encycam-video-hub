@@ -12,23 +12,65 @@ import AdminOverviewPage from './pages/admin/AdminOverviewPage';
 import UsersPage from './pages/admin/UsersPage';
 import AuditLogPage from './pages/admin/AuditLogPage';
 import CategoriesPage from './pages/admin/CategoriesPage';
+import SaleManagerDashboardPage from './pages/sale/SaleManagerDashboardPage';
+import SaleManagerProjectsPage from './pages/sale/SaleManagerProjectsPage';
+import SaleManagerUsersPage from './pages/sale/SaleManagerUsersPage';
+import SaleVideoQueuePage from './pages/sale/SaleVideoQueuePage';
+import SaleVideoDetailPage from './pages/sale/SaleVideoDetailPage';
+import SaleDashboardPage from './pages/sale/SaleDashboardPage';
+import SaleUploadPage from './pages/sale/SaleUploadPage';
 
 function ProtectedRoutes() {
   const { currentUser } = useAppStore();
   if (!currentUser) return <Navigate to="/login" replace />;
   const allRoles = currentUser.allRoles?.length ? currentUser.allRoles : [currentUser.role];
-  const isAdmin = allRoles.includes('admin');
-  const isBtv   = allRoles.includes('btv');
+  const isAdmin        = allRoles.includes('admin');
+  const isBtv          = allRoles.includes('btv');
+  const isSaleManager  = allRoles.includes('sale_manager');
+  const isSale         = allRoles.includes('sale');
+  const isSaleFlow     = isSaleManager || isSale;
 
   return (
     <AppShell>
       <Routes>
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
-        <Route path="/dashboard" element={isAdmin ? <AdminOverviewPage /> : <DashboardPage />} />
+
+        {/* Dashboard — role-based */}
+        <Route path="/dashboard" element={
+          isAdmin ? <AdminOverviewPage /> :
+          isSaleManager ? <SaleManagerDashboardPage /> :
+          isSale ? <SaleDashboardPage /> :
+          <DashboardPage />
+        } />
+
+        {/* BTV flow */}
         <Route path="/videos" element={<VideoListPage />} />
-        <Route path="/videos/:id" element={<VideoDetailPage />} />
+        <Route path="/videos/:id" element={
+          isSaleFlow ? <SaleVideoDetailPage /> : <VideoDetailPage />
+        } />
         {isBtv && <Route path="/upload" element={<UploadPage />} />}
+
+        {/* Sale flow — video list & detail */}
+        {(isSaleFlow || isAdmin) && (
+          <>
+            <Route path="/sale-videos" element={<SaleVideoQueuePage />} />
+            <Route path="/sale-videos/:id" element={<SaleVideoDetailPage />} />
+          </>
+        )}
+
+        {/* Sale Manager — project & user management */}
+        {(isSaleManager || isAdmin) && (
+          <>
+            <Route path="/sale-manager/projects" element={<SaleManagerProjectsPage />} />
+            <Route path="/sale-manager/users" element={<SaleManagerUsersPage />} />
+          </>
+        )}
+
+        {/* Sale — upload */}
+        {isSale && <Route path="/sale/upload" element={<SaleUploadPage />} />}
+
         <Route path="/notifications" element={<NotificationsPage />} />
+
         {isAdmin && (
           <>
             <Route path="/admin/users" element={<UsersPage />} />

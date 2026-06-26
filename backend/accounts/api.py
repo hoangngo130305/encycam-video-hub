@@ -14,6 +14,8 @@ from fastapi_auth import require_auth
 
 router = APIRouter(tags=["auth & users"])
 
+_ALL_ROLES = {'admin', 'btv', 'reviewer', 'final', 'sale_manager', 'sale'}
+
 
 def _initials(name: str) -> str:
     words = name.strip().split()
@@ -29,6 +31,19 @@ def _audit(actor: User, action: str, resource_id: int) -> None:
 def _check_admin(user: User) -> None:
     if not user.has_role('admin'):
         raise HTTPException(status_code=403, detail="Chỉ Admin mới có quyền này.")
+
+
+def _check_admin_or_sm(user: User) -> None:
+    if not user.has_role('admin', 'sale_manager'):
+        raise HTTPException(status_code=403, detail="Không có quyền thực hiện thao tác này.")
+
+
+def _assert_sm_targets_sale(actor: User, target: User) -> None:
+    """Sale Manager chỉ được quản lý tài khoản có role Sale."""
+    if actor.has_role('admin'):
+        return
+    if not target.has_role('sale'):
+        raise HTTPException(status_code=403, detail="Sale Manager chỉ có thể quản lý tài khoản Sale.")
 
 
 @router.post("/auth/login/", response_model=LoginOut)
@@ -93,23 +108,37 @@ def list_users(
     role: Optional[str] = None,
     user: User = Depends(require_auth),
 ):
-    _check_admin(user)
+    _check_admin_or_sm(user)
     qs = User.objects.order_by('created_at')
+
+    # Sale Manager chỉ thấy tài khoản Sale
+    if user.has_role('sale_manager') and not user.has_role('admin'):
+        qs = qs.filter(role='sale')
+
     if search and search.strip():
         qs = qs.filter(Q(name__icontains=search) | Q(email__icontains=search))
     if role and role.strip():
-        from django.db.models import Q as DQ
-        qs = qs.filter(DQ(role=role) | DQ(extra_roles__contains=role))
+        qs = qs.filter(Q(role=role) | Q(extra_roles__contains=role))
     return list(qs)
 
 
 @router.post("/users/", response_model=UserOut)
 def create_user(body: UserCreateIn, user: User = Depends(require_auth)):
-    _check_admin(user)
+    _check_admin_or_sm(user)
+
+    # Sale Manager chỉ được tạo tài khoản Sale
+    if user.has_role('sale_manager') and not user.has_role('admin'):
+        if body.role != 'sale':
+            raise HTTPException(status_code=403, detail="Sale Manager chỉ có thể tạo tài khoản Sale.")
+
     if User.objects.filter(email__iexact=body.email).exists():
         raise HTTPException(status_code=400, detail="Email đã tồn tại trong hệ thống.")
+
+    if body.role not in _ALL_ROLES:
+        raise HTTPException(status_code=400, detail=f"Role không hợp lệ: {body.role}")
+
     bg, color = ROLE_AVATAR_COLORS.get(body.role, ('#dbeafe', '#1d4ed8'))
-    extra = [r for r in (body.extraRoles or []) if r != body.role and r in ('btv', 'reviewer', 'final', 'admin')]
+    extra = [r for r in (body.extraRoles or []) if r != body.role and r in _ALL_ROLES]
     new_user = User(
         name=body.name,
         email=body.email.strip().lower(),
@@ -129,20 +158,24 @@ def create_user(body: UserCreateIn, user: User = Depends(require_auth)):
 
 @router.get("/users/{user_id}/", response_model=UserOut)
 def get_user(user_id: int, user: User = Depends(require_auth)):
-    _check_admin(user)
-    try:
-        return User.objects.get(pk=user_id)
-    except User.DoesNotExist:
-        raise HTTPException(status_code=404, detail="Người dùng không tồn tại.")
-
-
-@router.patch("/users/{user_id}/", response_model=UserOut)
-def update_user(user_id: int, body: UserUpdateIn, user: User = Depends(require_auth)):
-    _check_admin(user)
+    _check_admin_or_sm(user)
     try:
         target = User.objects.get(pk=user_id)
     except User.DoesNotExist:
         raise HTTPException(status_code=404, detail="Người dùng không tồn tại.")
+    _assert_sm_targets_sale(user, target)
+    return target
+
+
+@router.patch("/users/{user_id}/", response_model=UserOut)
+def update_user(user_id: int, body: UserUpdateIn, user: User = Depends(require_auth)):
+    _check_admin_or_sm(user)
+    try:
+        target = User.objects.get(pk=user_id)
+    except User.DoesNotExist:
+        raise HTTPException(status_code=404, detail="Người dùng không tồn tại.")
+    _assert_sm_targets_sale(user, target)
+
     if body.email is not None:
         email = body.email.strip().lower()
         if User.objects.filter(email__iexact=email).exclude(pk=user_id).exists():
@@ -151,14 +184,21 @@ def update_user(user_id: int, body: UserUpdateIn, user: User = Depends(require_a
     if body.name is not None:
         target.name = body.name
         target.initials = _initials(body.name)
-    if body.role is not None and body.role != target.role:
-        target.role = body.role
-        bg, color = ROLE_AVATAR_COLORS.get(body.role, ('#dbeafe', '#1d4ed8'))
-        target.avatar_bg = bg
-        target.avatar_color = color
-    if body.extraRoles is not None:
-        extra = [r for r in body.extraRoles if r != target.role and r in ('btv', 'reviewer', 'final', 'admin')]
-        target.extra_roles = ','.join(extra)
+
+    # Sale Manager không được đổi role hay extraRoles
+    is_sm_not_admin = user.has_role('sale_manager') and not user.has_role('admin')
+    if not is_sm_not_admin:
+        if body.role is not None and body.role != target.role:
+            if body.role not in _ALL_ROLES:
+                raise HTTPException(status_code=400, detail=f"Role không hợp lệ: {body.role}")
+            target.role = body.role
+            bg, color = ROLE_AVATAR_COLORS.get(body.role, ('#dbeafe', '#1d4ed8'))
+            target.avatar_bg = bg
+            target.avatar_color = color
+        if body.extraRoles is not None:
+            extra = [r for r in body.extraRoles if r != target.role and r in _ALL_ROLES]
+            target.extra_roles = ','.join(extra)
+
     target.is_staff = target.has_role('admin')
     if body.telegramChatId is not None:
         target.telegram_chat_id = body.telegramChatId.strip()
@@ -183,11 +223,12 @@ def delete_user(user_id: int, user: User = Depends(require_auth)):
 
 @router.post("/users/{user_id}/toggle-lock/", response_model=UserOut)
 def toggle_lock(user_id: int, user: User = Depends(require_auth)):
-    _check_admin(user)
+    _check_admin_or_sm(user)
     try:
         target = User.objects.get(pk=user_id)
     except User.DoesNotExist:
         raise HTTPException(status_code=404, detail="Người dùng không tồn tại.")
+    _assert_sm_targets_sale(user, target)
     if target.has_role('admin'):
         raise HTTPException(status_code=400, detail="Không thể khoá tài khoản Admin.")
     if target.pk == user.pk:

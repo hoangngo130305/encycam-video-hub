@@ -9,6 +9,16 @@ class CategoryOut(BaseSchema):
     name: str
     youtubePlaylistId: str
     youtubeCategoryId: str
+    forSale: bool = False
+
+
+class SaleProjectOut(BaseSchema):
+    id: int
+    name: str
+    category: CategoryOut
+    sale: Optional[UserOut] = None
+    saleManager: UserOut
+    createdAt: datetime
 
 
 class VideoVersionOut(BaseSchema):
@@ -74,3 +84,26 @@ class RevisionNoteIn(BaseSchema):
 
 class RejectReasonIn(BaseSchema):
     reason: str
+
+
+class SaleVideoListOut(BaseSchema):
+    id: int
+    title: str
+    fileId: str
+    status: str
+    currentVersion: int
+    uploader: UserOut
+    saleProject: SaleProjectOut
+    uploadedAt: datetime
+    updatedAt: datetime
+    thumbGradient: str
+    notes: str
+    youtubeVideoId: Optional[str] = None
+    youtubeUrl: Optional[str] = None
+    youtubeUploadStatus: str = 'idle'
+    youtubeUploadProgress: int = 0
+
+
+class SaleVideoDetailOut(SaleVideoListOut):
+    versions: list[VideoVersionOut] = []
+    history: list[HistoryEntryOut] = []

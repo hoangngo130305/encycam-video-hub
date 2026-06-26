@@ -6,6 +6,7 @@ class Category(models.Model):
     name                 = models.CharField('Tên danh mục', max_length=100, unique=True)
     youtube_playlist_id  = models.CharField('YouTube Playlist ID', max_length=60, blank=True)
     youtube_category_id  = models.CharField('YouTube Category ID', max_length=5, default='22')
+    for_sale             = models.BooleanField('Dùng cho Sale flow', default=False)
     created_at           = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -16,6 +17,33 @@ class Category(models.Model):
 
     def __str__(self):
         return self.name
+
+
+class SaleProject(models.Model):
+    name         = models.CharField('Tên project', max_length=200)
+    category     = models.ForeignKey(
+        Category, verbose_name='Danh mục',
+        related_name='sale_projects', on_delete=models.CASCADE,
+    )
+    sale         = models.ForeignKey(
+        'accounts.User', verbose_name='Sale được gán',
+        related_name='sale_projects', null=True, blank=True,
+        on_delete=models.SET_NULL,
+    )
+    sale_manager = models.ForeignKey(
+        'accounts.User', verbose_name='Sale Manager',
+        related_name='managed_projects', on_delete=models.CASCADE,
+    )
+    created_at   = models.DateTimeField('Ngày tạo', auto_now_add=True)
+
+    class Meta:
+        db_table = 'sale_projects'
+        ordering = ['-created_at']
+        verbose_name = 'Sale Project'
+        verbose_name_plural = 'Sale Projects'
+
+    def __str__(self):
+        return f'{self.name} — {self.sale.name if self.sale else "Chưa gán"}'
 
 
 THUMB_GRADIENTS = [
@@ -72,6 +100,11 @@ class Video(models.Model):
         default='idle',
     )
     youtube_upload_progress = models.PositiveSmallIntegerField('Tiến độ upload YouTube (%)', default=0)
+    sale_project = models.ForeignKey(
+        'SaleProject', verbose_name='Sale Project',
+        null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='videos',
+    )
 
     class Meta:
         db_table = 'videos'

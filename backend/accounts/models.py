@@ -3,10 +3,12 @@ from django.db import models
 
 
 ROLE_AVATAR_COLORS = {
-    'admin':    ('#f3e8ff', '#7c3aed'),
-    'btv':      ('#dbeafe', '#1d4ed8'),
-    'reviewer': ('#dcfce7', '#16a34a'),
-    'final':    ('#ffedd5', '#ea580c'),
+    'admin':        ('#f3e8ff', '#7c3aed'),
+    'btv':          ('#dbeafe', '#1d4ed8'),
+    'reviewer':     ('#dcfce7', '#16a34a'),
+    'final':        ('#ffedd5', '#ea580c'),
+    'sale_manager': ('#fef9c3', '#a16207'),
+    'sale':         ('#fce7f3', '#be185d'),
 }
 
 
@@ -29,10 +31,12 @@ class UserManager(BaseUserManager):
 
 class User(AbstractBaseUser, PermissionsMixin):
     ROLE_CHOICES = [
-        ('admin',    'Admin'),
-        ('btv',      'BTV'),
-        ('reviewer', 'Reviewer'),
-        ('final',    'Duyệt cuối'),
+        ('admin',        'Admin'),
+        ('btv',          'BTV'),
+        ('reviewer',     'Reviewer'),
+        ('final',        'Duyệt cuối'),
+        ('sale_manager', 'Sale Manager'),
+        ('sale',         'Sale'),
     ]
 
     name        = models.CharField('Họ tên', max_length=255)

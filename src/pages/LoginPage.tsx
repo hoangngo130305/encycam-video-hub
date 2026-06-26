@@ -4,55 +4,7 @@ import { Eye, EyeOff, Video, Mail, Lock, ChevronRight } from "lucide-react";
 import { useAppStore } from "../store/appStore";
 import { authService } from "../services/authService";
 import { notificationService } from "../services/notificationService";
-import { Button, Input, RoleBadge } from "../components/ui";
-import type { Role } from "../types";
-
-const DEMO_ACCOUNTS: {
-  email: string;
-  password: string;
-  role: Role;
-  name: string;
-  initials: string;
-  avatarBg: string;
-  avatarColor: string;
-}[] = [
-  {
-    email: "hminh@encycam.vn",
-    password: "encycam2026",
-    role: "btv",
-    name: "Hoàng Minh",
-    initials: "HM",
-    avatarBg: "#dbeafe",
-    avatarColor: "#1d4ed8",
-  },
-  {
-    email: "nthao@encycam.vn",
-    password: "encycam2026",
-    role: "reviewer",
-    name: "Nguyễn Thảo",
-    initials: "NT",
-    avatarBg: "#dcfce7",
-    avatarColor: "#16a34a",
-  },
-  {
-    email: "plong@encycam.vn",
-    password: "encycam2026",
-    role: "final",
-    name: "Phạm Long",
-    initials: "PL",
-    avatarBg: "#ffedd5",
-    avatarColor: "#ea580c",
-  },
-  {
-    email: "admin@encycam.vn",
-    password: "encycam2026",
-    role: "admin",
-    name: "Admin System",
-    initials: "AD",
-    avatarBg: "#f3e8ff",
-    avatarColor: "#7c3aed",
-  },
-];
+import { Button, Input } from "../components/ui";
 
 export default function LoginPage() {
   const { login, setNotifications, showToast } = useAppStore();
@@ -214,9 +166,7 @@ export default function LoginPage() {
             </Button>
           </form>
 
-          {/* Demo accounts removed */}
-
-          <p className="mt-6 text-center text-xs text-gray-400 dark:text-gray-600">
+          <p className="mt-4 text-center text-xs text-gray-400 dark:text-gray-600">
             Quên mật khẩu? Liên hệ Admin để reset
           </p>
         </div>

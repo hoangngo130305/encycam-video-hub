@@ -27,6 +27,11 @@ def _link(video_id: int) -> str:
     return f'{base}/#/videos/{video_id}' if base else ''
 
 
+def _link_sale(video_id: int) -> str:
+    base = _app_url()
+    return f'{base}/#/sale-videos/{video_id}' if base else ''
+
+
 def _send(chat_id: str, text: str) -> None:
     token = _token()
     if not token or not chat_id:
@@ -142,3 +147,62 @@ def notify_rejected(video_id: int, video_title: str, rejecter_name: str, reason:
     _send_to_user(btv, text)
     if reviewer:
         _send_to_user(reviewer, text)
+
+
+# ── Sale flow notifications ───────────────────────────────────────────────────
+
+def notify_sale_upload(video_id: int, video_title: str, sale_name: str, project_name: str, sale_manager) -> None:
+    """Sale upload → Telegram + App tới Sale Manager."""
+    link = _link_sale(video_id)
+    text = (
+        f'📤 <b>Sale upload video mới</b>\n'
+        f'📋 <b>Tên:</b> {video_title}\n'
+        f'👤 <b>Sale:</b> {sale_name}\n'
+        f'📁 <b>Project:</b> {project_name}'
+    )
+    if link:
+        text += f'\n🔗 <a href="{link}">Xem video</a>'
+    _send_to_user(sale_manager, text)
+
+
+def notify_sale_approved(video_id: int, video_title: str, sm_name: str, sale, yt_url: str = '') -> None:
+    """Sale Manager approve → thông báo riêng cho Sale."""
+    link = _link_sale(video_id)
+    text = (
+        f'✅ <b>Video đã được duyệt!</b>\n'
+        f'📋 <b>Tên:</b> {video_title}\n'
+        f'👤 <b>Sale Manager:</b> {sm_name}'
+    )
+    if yt_url:
+        text += f'\n▶️ <a href="{yt_url}">Xem trên YouTube</a>'
+    if link:
+        text += f'\n🔗 <a href="{link}">Xem nội bộ</a>'
+    _send_to_user(sale, text)
+
+
+def notify_sale_rejected(video_id: int, video_title: str, sm_name: str, reason: str, sale) -> None:
+    """Sale Manager reject → thông báo riêng cho Sale."""
+    link = _link_sale(video_id)
+    text = (
+        f'❌ <b>Video bị từ chối</b>\n'
+        f'📋 <b>Tên:</b> {video_title}\n'
+        f'👤 <b>Sale Manager:</b> {sm_name}\n'
+        f'💬 <b>Lý do:</b> {reason}'
+    )
+    if link:
+        text += f'\n🔗 <a href="{link}">Xem video</a>'
+    _send_to_user(sale, text)
+
+
+def notify_sale_revision(video_id: int, video_title: str, sm_name: str, note: str, sale) -> None:
+    """Sale Manager yêu cầu sửa → thông báo riêng cho Sale."""
+    link = _link_sale(video_id)
+    text = (
+        f'🔄 <b>Yêu cầu sửa lại</b>\n'
+        f'📋 <b>Tên:</b> {video_title}\n'
+        f'👤 <b>Sale Manager:</b> {sm_name}\n'
+        f'💬 <b>Nội dung:</b> {note}'
+    )
+    if link:
+        text += f'\n🔗 <a href="{link}">Xem video</a>'
+    _send_to_user(sale, text)
