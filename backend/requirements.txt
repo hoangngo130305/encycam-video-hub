@@ -9,3 +9,6 @@ django-cors-headers==4.4.0
 python-decouple==3.8
 mysqlclient==2.2.4
 django-jazzmin==3.0.3
+google-api-python-client==2.149.0
+google-auth-httplib2==0.2.0
+google-auth-oauthlib==1.2.1
