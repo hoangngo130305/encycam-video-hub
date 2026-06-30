@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { FolderOpen, Plus, Edit2, Trash2, X, Check, User } from 'lucide-react';
+import { FolderOpen, Plus, Edit2, Trash2, Check, User, Shield } from 'lucide-react';
 import { useAppStore } from '../../store/appStore';
 import { saleProjectService } from '../../services/saleProjectService';
 import { categoryService } from '../../services/categoryService';
@@ -26,7 +26,9 @@ interface ProjectFormData {
 const EMPTY_FORM: ProjectFormData = { name: '', categoryId: '', saleId: '' };
 
 export default function SaleManagerProjectsPage() {
-  const { showToast } = useAppStore();
+  const { currentUser, showToast } = useAppStore();
+  const isAdmin = (currentUser?.allRoles ?? [currentUser?.role]).includes('admin');
+
   const [projects, setProjects] = useState<SaleProject[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [saleUsers, setSaleUsers] = useState<UserType[]>([]);
@@ -45,9 +47,9 @@ export default function SaleManagerProjectsPage() {
       categoryService.list({ forSale: true }),
       userService.list({ role: 'sale' }),
     ]).then(([projs, cats, users]) => {
-      setProjects(projs);
-      setCategories(cats);
-      setSaleUsers(users);
+      setProjects(projs as SaleProject[]);
+      setCategories(cats as Category[]);
+      setSaleUsers(users as UserType[]);
     }).catch(() => {}).finally(() => setLoading(false));
   }, []);
 
@@ -82,7 +84,7 @@ export default function SaleManagerProjectsPage() {
     try {
       const payload = {
         name: form.name.trim(),
-        categoryId: Number(form.categoryId),
+        categoryId: Number(form.categoryId || saleCategory?.id),
         saleId: form.saleId ? Number(form.saleId) : undefined,
       };
       if (editProject) {
@@ -171,6 +173,17 @@ export default function SaleManagerProjectsPage() {
                   </div>
                 </div>
 
+                {/* Sale Manager — chỉ admin thấy để biết ai quản lý */}
+                {isAdmin && p.saleManager && (
+                  <div className="flex items-center gap-2 p-2 rounded-lg bg-violet-50 dark:bg-violet-950/20 border border-violet-100 dark:border-violet-900">
+                    <Shield size={10} className="text-violet-400 flex-shrink-0" />
+                    <span className="text-[11px] text-violet-600 dark:text-violet-400 truncate">
+                      SM: {p.saleManager.name}
+                    </span>
+                  </div>
+                )}
+
+                {/* Sale */}
                 <div className="flex items-center gap-2 p-2.5 rounded-lg bg-gray-50 dark:bg-gray-800/50">
                   {p.sale ? (
                     <>
