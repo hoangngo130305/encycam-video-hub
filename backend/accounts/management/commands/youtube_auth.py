@@ -12,7 +12,12 @@ class Command(BaseCommand):
         self.stdout.write(f'   Client secrets: {CLIENT_SECRETS}')
 
         flow = InstalledAppFlow.from_client_secrets_file(CLIENT_SECRETS, SCOPES)
-        creds = flow.run_local_server(port=8080, open_browser=True)
+        flow.redirect_uri = 'urn:ietf:wg:oauth:2.0:oob'
+        auth_url, _ = flow.authorization_url(prompt='consent')
+        self.stdout.write(f'\n👉 Mở URL này trên trình duyệt:\n\n{auth_url}\n')
+        code = input('📋 Dán code từ Google vào đây: ').strip()
+        flow.fetch_token(code=code)
+        creds = flow.credentials
 
         _save_token(creds)
         self.stdout.write(self.style.SUCCESS(f'✅ Xác thực thành công! Token lưu tại: {TOKEN_FILE}'))

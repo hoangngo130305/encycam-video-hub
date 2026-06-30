@@ -205,14 +205,14 @@ export default function SaleUploadPage() {
           ) : uploadState === 'uploading' ? (
             <Card className="p-6">
               <div className="flex items-center gap-4 mb-4">
-                <div className="w-10 h-10 rounded-xl bg-pink-100 dark:bg-pink-950/40 flex items-center justify-center">
+                <div className="w-10 h-10 rounded-xl bg-pink-100 dark:bg-pink-950/40 flex items-center justify-center flex-shrink-0">
                   <FileVideo size={20} className="text-pink-600 dark:text-pink-400" />
                 </div>
-                <div className="flex-1">
-                  <div className="font-semibold text-sm text-gray-900 dark:text-gray-100">{file?.name}</div>
+                <div className="flex-1 min-w-0">
+                  <div className="font-semibold text-sm text-gray-900 dark:text-gray-100 truncate">{file?.name}</div>
                   <div className="text-xs text-gray-500">Đang upload…</div>
                 </div>
-                <span className="font-mono text-sm font-bold text-pink-600">{Math.floor(progress)}%</span>
+                <span className="font-mono text-sm font-bold text-pink-600 flex-shrink-0">{Math.floor(progress)}%</span>
               </div>
               <div className="w-full bg-gray-100 dark:bg-gray-800 rounded-full h-2 overflow-hidden">
                 <div className="h-full bg-pink-500 rounded-full transition-all duration-300" style={{ width: `${progress}%` }} />
