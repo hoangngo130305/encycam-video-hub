@@ -667,16 +667,15 @@ def create_sale_project(body: SaleProjectIn, user: User = Depends(require_auth))
     # Xác định Sale Manager sở hữu project
     if user.has_role('sale_manager') and not user.has_role('admin'):
         sm = user
-    else:
-        # Admin tạo: phải chỉ định sale_manager_id
-        if not body.saleManagerId:
-            raise HTTPException(400, 'Admin phải chỉ định saleManagerId khi tạo project.')
+    elif body.saleManagerId:
         try:
             sm = User.objects.get(pk=body.saleManagerId)
         except User.DoesNotExist:
             raise HTTPException(404, 'Sale Manager không tồn tại.')
-        if not sm.has_role('sale_manager'):
+        if not sm.has_role('sale_manager') and not sm.has_role('admin'):
             raise HTTPException(400, 'User được chỉ định không phải Sale Manager.')
+    else:
+        sm = user  # Admin tạo không chỉ định SM → dùng chính admin
 
     # Gán sale nếu có
     sale_user = None

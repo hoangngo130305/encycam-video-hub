@@ -173,17 +173,22 @@ export function Modal({ open, onClose, title, children, footer, size = 'md', tit
   if (!open) return null;
   const widths = { sm: 'max-w-sm', md: 'max-w-md', lg: 'max-w-lg' };
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={e => e.target === e.currentTarget && onClose()}>
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-      <div className={cn('relative w-full bg-white dark:bg-gray-900 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-800 animate-scale-in overflow-hidden', widths[size])}>
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-800">
+      <div className={cn(
+        'relative w-full bg-white dark:bg-gray-900 shadow-2xl border border-gray-200 dark:border-gray-800 animate-scale-in',
+        'flex flex-col max-h-[92dvh] sm:max-h-[90dvh]',
+        'rounded-t-2xl sm:rounded-2xl',
+        widths[size],
+      )}>
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-800 flex-shrink-0">
           <h2 className={cn('font-bold text-sm', titleColor ?? 'text-gray-900 dark:text-gray-100')}>{title}</h2>
           <button onClick={onClose} className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
             <X size={14} />
           </button>
         </div>
-        <div className="px-5 py-4">{children}</div>
-        {footer && <div className="flex justify-end gap-2 px-5 py-3 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50">{footer}</div>}
+        <div className="px-5 py-4 overflow-y-auto flex-1">{children}</div>
+        {footer && <div className="flex justify-end gap-2 px-5 py-3 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 flex-shrink-0">{footer}</div>}
       </div>
     </div>
   );
