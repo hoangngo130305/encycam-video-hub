@@ -646,8 +646,7 @@ def list_sale_projects(user: User = Depends(require_auth)):
     qs = SaleProject.objects.select_related('category', 'sale', 'sale_manager')
     if user.has_role('sale') and not user.has_role('admin', 'sale_manager'):
         qs = qs.filter(sale=user)
-    elif user.has_role('sale_manager') and not user.has_role('admin'):
-        qs = qs.filter(sale_manager=user)
+    # admin và sale_manager đều thấy tất cả project
     return [_make_sale_project(sp) for sp in qs]
 
 
